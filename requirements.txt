@@ -1,0 +1,7 @@
+Flask>=3.0,<4
+numpy>=1.26,<3
+opencv-python>=4.8,<5
+Pillow>=10,<12
+pytesseract>=0.3.10,<0.4
+scikit-fuzzy>=0.4.2,<1
+scipy>=1.11,<2

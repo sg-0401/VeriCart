@@ -1,0 +1,60 @@
+{
+  "intents": [
+    {
+      "name": "greeting",
+      "patterns": ["hello", "hi", "hey", "good morning", "good evening", "howdy", "start", "help me"],
+      "responses": [
+        "👋 Welcome to **VeriCart**! I'm your AI-powered return assistant. I can help you with product returns, refunds, and quality verification. What would you like to do today?"
+      ]
+    },
+    {
+      "name": "return_initiate",
+      "patterns": ["return", "i want to return", "refund", "replace", "replacement", "exchange", "send back", "damaged", "defective", "broken", "wrong product", "not working", "issue with my order"],
+      "responses": [
+        "I'll help you with your return request! 📦 To get started, please provide your **Order ID** (e.g., ORD001, ORD002, etc.)."
+      ]
+    },
+    {
+      "name": "order_status",
+      "patterns": ["status", "where is my order", "track", "tracking", "my order", "check order"],
+      "responses": [
+        "Sure! Please share your **Order ID** and I'll look it up for you."
+      ]
+    },
+    {
+      "name": "reason_damage",
+      "patterns": ["damaged", "broken", "cracked", "shattered", "dent", "scratch", "physical damage"],
+      "responses": [
+        "I understand the product appears damaged. To verify the condition, I'll need to analyze a photo of the item. Please upload a clear image of the product below. 📸"
+      ]
+    },
+    {
+      "name": "reason_defect",
+      "patterns": ["defective", "not working", "malfunctioning", "doesn't work", "stopped working", "faulty", "dead on arrival"],
+      "responses": [
+        "I'm sorry to hear that! To process this defect claim, I need to visually inspect the product. Please upload a clear photo of the item below. 📸"
+      ]
+    },
+    {
+      "name": "reason_wrong",
+      "patterns": ["wrong item", "wrong product", "different product", "not what i ordered", "wrong size", "wrong color"],
+      "responses": [
+        "I'll verify that the received product matches your order. Please upload a clear photo of the item you received so our AI can cross-check it. 📸"
+      ]
+    },
+    {
+      "name": "reason_quality",
+      "patterns": ["poor quality", "bad quality", "low quality", "inferior", "counterfeit", "fake", "not genuine", "quality issue"],
+      "responses": [
+        "Our advanced AI system will scan the product for quality and authenticity issues. Please upload a clear photo of the product. 📸"
+      ]
+    },
+    {
+      "name": "goodbye",
+      "patterns": ["bye", "goodbye", "thank you", "thanks", "that's all", "done", "exit", "quit"],
+      "responses": [
+        "Thank you for contacting VeriCart! 😊 Your request has been logged. Have a great day!"
+      ]
+    }
+  ]
+}
