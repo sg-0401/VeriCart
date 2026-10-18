@@ -1,30 +1,874 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VeriCart — AI Return Verification</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>VeriCart — AI Return Verification</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
 <body>
-<div class="bg-canvas" aria-hidden="true"><div class="bg-gradient-mesh"></div><div class="bg-grid"></div><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div></div>
+
+<div class="bg-canvas" aria-hidden="true">
+    <div class="bg-gradient-mesh"></div>
+    <div class="bg-grid"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+</div>
+
 <div class="app-shell">
-<header class="app-header"><a class="logo" href="/"><div class="logo-shield">🛡️</div><span class="logo-text">VeriCart</span><span class="logo-tagline">AI Return Assistant</span></a><div class="header-right"><div class="status-indicator"><div class="status-dot"></div><span>AI Online</span></div><a class="btn-new-chat" href="/management" style="text-decoration:none">Management</a><button class="btn-new-chat" id="btnNewChat">↺ New Chat</button></div></header>
+
+<header class="app-header">
+
+    <a class="logo" href="/">
+        <div class="logo-shield">🛡️</div>
+        <span class="logo-text">VeriCart</span>
+        <span class="logo-tagline">AI Return Assistant</span>
+    </a>
+
+    <div class="header-right">
+
+        <div class="status-indicator">
+            <div class="status-dot"></div>
+            <span>AI Online</span>
+        </div>
+
+        <a
+            class="btn-new-chat"
+            href="/management"
+            style="text-decoration:none"
+        >
+            Management
+        </a>
+
+        <button
+            class="btn-new-chat"
+            id="btnNewChat"
+            type="button"
+        >
+            ↺ New Chat
+        </button>
+
+    </div>
+
+</header>
+
+
 <main class="main-content">
+
+<!-- =========================================================
+     LEFT PANEL
+========================================================= -->
+
 <aside class="left-panel">
-<div class="glass-card order-card" id="orderCard"><div class="card-header"><span class="card-header-icon">📦</span><span>Order Details</span></div><div class="card-body" id="orderCardBody"><p class="muted-center">Enter a grievance and Order ID to begin.</p></div></div>
-<div class="glass-card risk-card" id="riskCard"><div class="card-header"><span class="card-header-icon">🛡️</span><span>Customer Context</span></div><div class="card-body" id="riskCardBody"><p class="muted-center">Risk context appears after order lookup.</p></div></div>
-<div class="glass-card"><div class="card-header"><span class="card-header-icon">🔬</span><span>Verification Pipeline</span></div><div class="card-body"><div class="pipeline-steps-list">
-<div class="pipeline-step-item"><div class="step-icon-sm cnn">💬</div><div class="step-info"><div class="step-name">Grievance + Order</div><div class="step-exp">Identify the exact expected item</div></div></div>
-<div class="pipeline-step-item"><div class="step-icon-sm ae">👁️</div><div class="step-info"><div class="step-name">Evidence Validation</div><div class="step-exp">Photo/video quality + product match</div></div></div>
-<div class="pipeline-step-item"><div class="step-icon-sm fuzzy">⚖️</div><div class="step-info"><div class="step-name">Decision Engine</div><div class="step-exp">Approve / re-upload / human review</div></div></div>
-</div></div></div>
-<div class="glass-card"><div class="card-header"><span class="card-header-icon">⚡</span><span>Demo Orders</span></div><div class="card-body" style="padding:10px 14px"><button class="quick-action-btn demo" data-order="ORD001">🎧 <span>ORD001 — Headphones</span></button><button class="quick-action-btn demo" data-order="ORD003">👖 <span>ORD003 — Jeans</span></button><button class="quick-action-btn demo" data-order="ORD004">⌚ <span>ORD004 — Apple Watch</span></button></div></div>
+
+    <div class="glass-card order-card" id="orderCard">
+
+        <div class="card-header">
+            <span class="card-header-icon">📦</span>
+            <span>Order Details</span>
+        </div>
+
+        <div class="card-body" id="orderCardBody">
+
+            <p class="muted-center">
+                Enter a grievance and Order ID to begin.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="glass-card risk-card" id="riskCard">
+
+        <div class="card-header">
+            <span class="card-header-icon">🛡️</span>
+            <span>Customer Context</span>
+        </div>
+
+        <div class="card-body" id="riskCardBody">
+
+            <p class="muted-center">
+                Risk context appears after order lookup.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="glass-card">
+
+        <div class="card-header">
+            <span class="card-header-icon">🔬</span>
+            <span>Verification Pipeline</span>
+        </div>
+
+        <div class="card-body">
+
+            <div class="pipeline-steps-list">
+
+                <div class="pipeline-step-item">
+
+                    <div class="step-icon-sm cnn">
+                        💬
+                    </div>
+
+                    <div class="step-info">
+
+                        <div class="step-name">
+                            Grievance + Order
+                        </div>
+
+                        <div class="step-exp">
+                            Identify the exact expected item
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="pipeline-step-item">
+
+                    <div class="step-icon-sm ae">
+                        👁️
+                    </div>
+
+                    <div class="step-info">
+
+                        <div class="step-name">
+                            Evidence Validation
+                        </div>
+
+                        <div class="step-exp">
+                            Photo/video quality + product match
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="pipeline-step-item">
+
+                    <div class="step-icon-sm fuzzy">
+                        ⚖️
+                    </div>
+
+                    <div class="step-info">
+
+                        <div class="step-name">
+                            Decision Engine
+                        </div>
+
+                        <div class="step-exp">
+                            Approve / re-upload / human review
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="glass-card">
+
+        <div class="card-header">
+            <span class="card-header-icon">⚡</span>
+            <span>Demo Orders</span>
+        </div>
+
+        <div
+            class="card-body"
+            style="padding:10px 14px"
+        >
+
+            <button
+                type="button"
+                class="quick-action-btn demo"
+                data-order="ORD001"
+            >
+                🎧
+                <span>ORD001 — Headphones</span>
+            </button>
+
+
+            <button
+                type="button"
+                class="quick-action-btn demo"
+                data-order="ORD003"
+            >
+                👖
+                <span>ORD003 — Jeans</span>
+            </button>
+
+
+            <button
+                type="button"
+                class="quick-action-btn demo"
+                data-order="ORD004"
+            >
+                ⌚
+                <span>ORD004 — Apple Watch</span>
+            </button>
+
+        </div>
+
+    </div>
+
 </aside>
+
+
+<!-- =========================================================
+     CHAT AREA
+========================================================= -->
+
 <section class="chat-area">
-<div class="chat-topbar"><div class="bot-identity"><div class="bot-avatar">🤖</div><div><div class="bot-name">Vera <span>by VeriCart</span></div><div class="bot-status">● Online — Return Verification Assistant</div></div></div><span id="sessionIdDisplay" class="session-id"></span></div>
-<div class="messages-container" id="messagesContainer"></div><div class="typing-indicator" id="typingIndicator"><div class="msg-avatar-sm">🤖</div><div class="typing-dots"><span></span><span></span><span></span></div></div>
-<div class="upload-zone-wrapper" id="uploadZoneWrapper"><div class="upload-zone" id="uploadZone" tabindex="0"><span class="upload-icon-large">📸</span><div class="upload-title">Upload Photo or Unboxing Video</div><p class="upload-sub">JPG, PNG, WEBP, MP4, WEBM, MOV or AVI</p><button class="btn-browse" id="btnBrowse">📁 Choose Evidence</button></div><input type="file" id="evidenceFileInput" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/x-msvideo" hidden></div>
-<div class="input-bar"><button class="btn-upload-attach" id="btnAttach" title="Upload evidence">📎</button><input class="input-field" id="messageInput" placeholder="Tell Vera what went wrong…" maxlength="500"><button class="btn-send" id="btnSend"><svg viewBox="0 0 24 24"><path d="M2 21L23 12 2 3v7l15 2-15 2z"/></svg></button></div>
+
+    <div class="chat-topbar">
+
+        <div class="bot-identity">
+
+            <div class="bot-avatar">
+                🤖
+            </div>
+
+            <div>
+
+                <div class="bot-name">
+                    Vera
+                    <span>by VeriCart</span>
+                </div>
+
+                <div class="bot-status">
+                    ● Online — Return Verification Assistant
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <span
+            id="sessionIdDisplay"
+            class="session-id"
+        ></span>
+
+    </div>
+
+
+    <!-- CHAT MESSAGES -->
+
+    <div
+        class="messages-container"
+        id="messagesContainer"
+    ></div>
+
+
+    <!-- TYPING INDICATOR -->
+
+    <div
+        class="typing-indicator"
+        id="typingIndicator"
+    >
+
+        <div class="msg-avatar-sm">
+            🤖
+        </div>
+
+        <div class="typing-dots">
+
+            <span></span>
+            <span></span>
+            <span></span>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         SINGLE UPLOAD ZONE
+    ====================================================== -->
+
+   <div class="upload-zone-wrapper" id="uploadZoneWrapper">
+
+    <div id="uploadZone" class="upload-zone">
+
+        <div class="upload-icon">📸</div>
+
+        <div class="upload-title">
+            Add your evidence
+        </div>
+
+        <div class="upload-subtitle">
+            Upload existing evidence or capture a new photo/video.
+        </div>
+
+
+        <div class="upload-actions">
+
+            <button
+                type="button"
+                class="btn-primary"
+                id="btnBrowse"
+            >
+                📁 Upload Photo/Video
+            </button>
+
+
+            <button
+                type="button"
+                class="btn-secondary"
+                id="btnTakePhoto"
+            >
+                📷 Take Photo
+            </button>
+
+
+            <button
+                type="button"
+                class="btn-secondary"
+                id="btnTakeVideo"
+            >
+                🎥 Take Video
+            </button>
+
+        </div>
+
+
+        <!-- NORMAL FILE PICKER ONLY -->
+        <input
+            type="file"
+            id="evidenceFileInput"
+            accept="image/*,video/*"
+            hidden
+        />
+
+
+        <div class="upload-hint">
+            Maximum file size: 50 MB
+        </div>
+
+    </div>
+
+</div>
+
+    <!-- =====================================================
+         CHAT INPUT
+    ====================================================== -->
+
+    <div class="input-bar">
+
+        <button
+            type="button"
+            class="btn-upload-attach"
+            id="btnAttach"
+            title="Upload evidence"
+        >
+            📎
+        </button>
+
+
+        <input
+            class="input-field"
+            id="messageInput"
+            placeholder="Tell Vera what went wrong…"
+            maxlength="500"
+        >
+
+
+        <button
+            type="button"
+            class="btn-send"
+            id="btnSend"
+        >
+
+            <svg viewBox="0 0 24 24">
+                <path d="M2 21L23 12 2 3v7l15 2-15 2z"/>
+            </svg>
+
+        </button>
+
+    </div>
+
 </section>
+
+
+<!-- =========================================================
+     RIGHT PANEL
+========================================================= -->
+
 <aside class="right-panel">
-<div class="glass-card"><div class="card-header"><span class="card-header-icon">📊</span><span>Verification Scores</span></div><div class="card-body scores-panel"><div class="score-panel-item"><div class="score-panel-label">🎯 Product Match</div><div class="score-panel-value" id="scoreCnnVal">–</div><div class="score-panel-bar-track"><div class="score-panel-bar-fill" id="scoreCnnBar"></div></div></div><div class="score-panel-item"><div class="score-panel-label">💥 Damage Evidence</div><div class="score-panel-value" id="scoreAeVal">–</div><div class="score-panel-bar-track"><div class="score-panel-bar-fill" id="scoreAeBar"></div></div></div><div class="score-panel-item"><div class="score-panel-label">🛡️ Customer Context</div><div class="score-panel-value" id="scoreRiskVal">–</div><div class="score-panel-bar-track"><div class="score-panel-bar-fill" id="scoreRiskBar"></div></div></div><div class="score-panel-item"><div class="score-panel-label">⚖️ Decision</div><div class="score-panel-value" id="scoreFuzzyVal">–</div><div class="score-panel-bar-track"><div class="score-panel-bar-fill" id="scoreFuzzyBar"></div></div></div></div></div>
-<div class="glass-card"><div class="card-header"><span class="card-header-icon">🚩</span><span>Evidence Flags</span></div><div class="card-body" id="flagsBody"><p class="muted-center">Upload evidence to see validation results.</p></div></div>
-<div class="glass-card"><div class="card-header"><span class="card-header-icon">💡</span><span>How it works</span></div><div class="card-body small-copy"><p><b>1.</b> Tell Vera the grievance first.</p><p><b>2.</b> Enter the Order ID; the system retrieves the exact product, model, colour and size.</p><p><b>3.</b> Upload a photo or unboxing video.</p><p><b>4.</b> AI checks evidence quality, product match, damage and package/order text.</p><p><b>5.</b> Clear evidence is verified; unclear cases go to management.</p></div></div>
-</aside></main></div>
-<div class="analysis-overlay" id="analysisOverlay"><div class="overlay-header"><div class="overlay-title">🔬 Verifying Evidence</div><div class="overlay-subtitle">Checking product identity, evidence quality and the claimed grievance.</div></div><div class="pipeline-steps"><div class="pipeline-step-card step-cnn" id="stepCnn"><span class="step-card-icon">📷</span><div class="step-card-title">Evidence Quality</div><div class="step-card-status" id="stepCnnStatus">Waiting…</div></div><div class="pipeline-connector"><div class="connector-line"><div class="connector-fill" id="connector1"></div></div></div><div class="pipeline-step-card step-ae" id="stepAe"><span class="step-card-icon">🔎</span><div class="step-card-title">Product / Issue Match</div><div class="step-card-status" id="stepAeStatus">Waiting…</div></div><div class="pipeline-connector"><div class="connector-line"><div class="connector-fill" id="connector2"></div></div></div><div class="pipeline-step-card step-fuzzy" id="stepFuzzy"><span class="step-card-icon">⚖️</span><div class="step-card-title">Decision</div><div class="step-card-status" id="stepFuzzyStatus">Waiting…</div></div></div></div>
-<div class="result-card-wrapper" id="resultCardWrapper"><div class="result-card" id="resultCard"></div></div><div class="toast-container" id="toastContainer"></div>
-<script src="/static/js/main.js"></script></body></html>
+
+
+    <div class="glass-card">
+
+        <div class="card-header">
+
+            <span class="card-header-icon">
+                📊
+            </span>
+
+            <span>
+                Verification Scores
+            </span>
+
+        </div>
+
+
+        <div class="card-body scores-panel">
+
+
+            <div class="score-panel-item">
+
+                <div class="score-panel-label">
+                    🎯 Product Match
+                </div>
+
+                <div
+                    class="score-panel-value"
+                    id="scoreCnnVal"
+                >
+                    –
+                </div>
+
+                <div class="score-panel-bar-track">
+
+                    <div
+                        class="score-panel-bar-fill"
+                        id="scoreCnnBar"
+                    ></div>
+
+                </div>
+
+            </div>
+
+
+            <div class="score-panel-item">
+
+                <div class="score-panel-label">
+                    💥 Damage Evidence
+                </div>
+
+                <div
+                    class="score-panel-value"
+                    id="scoreAeVal"
+                >
+                    –
+                </div>
+
+                <div class="score-panel-bar-track">
+
+                    <div
+                        class="score-panel-bar-fill"
+                        id="scoreAeBar"
+                    ></div>
+
+                </div>
+
+            </div>
+
+
+            <div class="score-panel-item">
+
+                <div class="score-panel-label">
+                    🛡️ Customer Context
+                </div>
+
+                <div
+                    class="score-panel-value"
+                    id="scoreRiskVal"
+                >
+                    –
+                </div>
+
+                <div class="score-panel-bar-track">
+
+                    <div
+                        class="score-panel-bar-fill"
+                        id="scoreRiskBar"
+                    ></div>
+
+                </div>
+
+            </div>
+
+
+            <div class="score-panel-item">
+
+                <div class="score-panel-label">
+                    ⚖️ Decision
+                </div>
+
+                <div
+                    class="score-panel-value"
+                    id="scoreFuzzyVal"
+                >
+                    –
+                </div>
+
+                <div class="score-panel-bar-track">
+
+                    <div
+                        class="score-panel-bar-fill"
+                        id="scoreFuzzyBar"
+                    ></div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="glass-card">
+
+        <div class="card-header">
+
+            <span class="card-header-icon">
+                🚩
+            </span>
+
+            <span>
+                Evidence Flags
+            </span>
+
+        </div>
+
+
+        <div
+            class="card-body"
+            id="flagsBody"
+        >
+
+            <p class="muted-center">
+                Upload evidence to see validation results.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="glass-card">
+
+        <div class="card-header">
+
+            <span class="card-header-icon">
+                💡
+            </span>
+
+            <span>
+                How it works
+            </span>
+
+        </div>
+
+
+        <div class="card-body small-copy">
+
+            <p>
+                <b>1.</b>
+                Tell Vera the grievance first.
+            </p>
+
+            <p>
+                <b>2.</b>
+                Enter the Order ID; the system retrieves the exact product, model, colour and size.
+            </p>
+
+            <p>
+                <b>3.</b>
+                Upload or capture a photo/video.
+            </p>
+
+            <p>
+                <b>4.</b>
+                AI checks evidence quality, product match, damage and package/order text.
+            </p>
+
+            <p>
+                <b>5.</b>
+                Clear evidence is verified; unclear cases go to management.
+            </p>
+
+        </div>
+
+    </div>
+
+</aside>
+
+</main>
+
+</div>
+
+
+<!-- =========================================================
+     CAMERA MODAL
+========================================================= -->
+
+<div
+    class="camera-modal"
+    id="cameraModal"
+>
+
+    <div class="camera-modal-card">
+
+        <div class="camera-modal-header">
+
+            <div>
+
+                <div class="camera-modal-title">
+                    <span id="cameraTitle">
+                        Camera
+                    </span>
+                </div>
+
+                <div class="camera-modal-subtitle">
+                    Position the product clearly inside the frame.
+                </div>
+
+            </div>
+
+
+            <button
+                type="button"
+                class="camera-close"
+                id="cameraClose"
+            >
+                ✕
+            </button>
+
+        </div>
+
+
+        <div class="camera-preview-container">
+
+            <video
+                id="cameraPreview"
+                autoplay
+                playsinline
+                muted
+            ></video>
+
+
+            <div
+                class="camera-recording-indicator"
+                id="cameraRecordingIndicator"
+            >
+                🔴 Recording
+            </div>
+
+        </div>
+
+
+        <div class="camera-controls">
+
+            <button
+                type="button"
+                class="btn-primary camera-capture-btn"
+                id="cameraCapturePhoto"
+            >
+                📸 Capture Photo
+            </button>
+
+
+            <button
+                type="button"
+                class="btn-primary camera-capture-btn"
+                id="cameraStartVideo"
+            >
+                🎥 Start Recording
+            </button>
+
+
+            <button
+                type="button"
+                class="btn-secondary camera-capture-btn"
+                id="cameraStopVideo"
+                style="display:none"
+            >
+                ⏹ Stop Recording
+            </button>
+
+
+            <button
+                type="button"
+                class="btn-secondary camera-capture-btn"
+                id="cameraCancel"
+            >
+                Cancel
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     ANALYSIS OVERLAY
+========================================================= -->
+
+<div
+    class="analysis-overlay"
+    id="analysisOverlay"
+>
+
+    <div class="overlay-header">
+
+        <div class="overlay-title">
+            🔬 Verifying Evidence
+        </div>
+
+        <div class="overlay-subtitle">
+            Checking product identity, evidence quality and the claimed grievance.
+        </div>
+
+    </div>
+
+
+    <div class="pipeline-steps">
+
+
+        <div
+            class="pipeline-step-card step-cnn"
+            id="stepCnn"
+        >
+
+            <span class="step-card-icon">
+                📷
+            </span>
+
+            <div class="step-card-title">
+                Evidence Quality
+            </div>
+
+            <div
+                class="step-card-status"
+                id="stepCnnStatus"
+            >
+                Waiting…
+            </div>
+
+        </div>
+
+
+        <div class="pipeline-connector">
+
+            <div class="connector-line">
+
+                <div
+                    class="connector-fill"
+                    id="connector1"
+                ></div>
+
+            </div>
+
+        </div>
+
+
+        <div
+            class="pipeline-step-card step-ae"
+            id="stepAe"
+        >
+
+            <span class="step-card-icon">
+                🔎
+            </span>
+
+            <div class="step-card-title">
+                Product / Issue Match
+            </div>
+
+            <div
+                class="step-card-status"
+                id="stepAeStatus"
+            >
+                Waiting…
+            </div>
+
+        </div>
+
+
+        <div class="pipeline-connector">
+
+            <div class="connector-line">
+
+                <div
+                    class="connector-fill"
+                    id="connector2"
+                ></div>
+
+            </div>
+
+        </div>
+
+
+        <div
+            class="pipeline-step-card step-fuzzy"
+            id="stepFuzzy"
+        >
+
+            <span class="step-card-icon">
+                ⚖️
+            </span>
+
+            <div class="step-card-title">
+                Decision
+            </div>
+
+            <div
+                class="step-card-status"
+                id="stepFuzzyStatus"
+            >
+                Waiting…
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     RESULT
+========================================================= -->
+
+<div
+    class="result-card-wrapper"
+    id="resultCardWrapper"
+>
+
+    <div
+        class="result-card"
+        id="resultCard"
+    ></div>
+
+</div>
+
+
+<div
+    class="toast-container"
+    id="toastContainer"
+></div>
+
+
+<script src="/static/js/main.js"></script>
+
+</body>
+</html>
