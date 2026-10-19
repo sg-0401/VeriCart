@@ -8,6 +8,7 @@ from utils.order_db import get_order
 from utils.risk_scorer import compute_risk_score
 from utils.evidence_engine import analyze_evidence
 from utils.case_store import create_case, list_cases, update_case, get_case
+from utils.report_generator import generate_verification_report
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("VERICART_SECRET", "vericart-development-secret")
@@ -123,6 +124,12 @@ def verify():
             "analysis": analysis, "evidence_file": path.name,
         })
     s["state"] = "completed"
+
+    report_id = (
+      f"VC-{__import__('datetime').datetime.now().strftime('%Y%m%d')}-"
+      f"{uuid.uuid4().hex[:8].upper()}"
+    )
+
     result = {
         "success": True, "final_decision": final, "decision_label": label,
         "order": order, "risk": risk, "grievance": grievance,
@@ -131,8 +138,26 @@ def verify():
         "cnn": {"category": order["category"], "confidence": analysis["product_confidence"], "defect_detected": analysis["damage_detected"]},
         "autoencoder": {"anomaly_score": analysis["anomaly_score"], "is_anomalous": analysis["anomaly_score"] >= 5, "reconstruction_loss": round(analysis["anomaly_score"]/10, 4)},
         "fuzzy": {"decision_score": 2 if final == "approved" else 5 if final == "human_review" else 8},
-        "media_type": analysis["media_type"], "evidence_file": path.name,
-    }
+        "media_type": analysis["media_type"], "evidence_file": path.name,"report_id": report_id,
+        }
+    try:
+        report_path = generate_verification_report(
+            report_id=result["report_id"],
+            verification_result=result,
+        )
+
+        result["report_url"] = (
+            f"/api/reports/{result['report_id']}/pdf"
+        )
+
+    except Exception as exc:
+        print(
+            "Report generation failed:",
+            exc
+        )
+
+        result["report_url"] = None
+        
     return jsonify(result)
 
 
@@ -167,7 +192,30 @@ def reset():
     sid = data.get("session_id")
     if sid: reset_session(sid)
     return jsonify({"status":"reset"})
+@app.route("/api/reports/<report_id>/pdf")
+def download_report(report_id):
 
+    filename = (
+        f"VeriCart_Report_{report_id}.pdf"
+    )
+
+    report_path = (
+        BASE / "data" / "reports" / filename
+    )
+
+    if not report_path.exists():
+        return jsonify({
+            "success": False,
+            "error": "Verification report not found."
+        }), 404
+
+    return send_from_directory(
+        report_path.parent,
+        report_path.name,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/pdf",
+    )
 
 @app.route("/uploads/<path:name>")
 def uploaded(name):

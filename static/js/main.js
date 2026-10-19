@@ -385,7 +385,6 @@ async function pipeline(file) {
 /* =========================================================
    SEND IMAGE / VIDEO TO BACKEND
    ========================================================= */
-
 async function verify(file) {
     const formData = new FormData();
 
@@ -409,15 +408,42 @@ async function verify(file) {
             }
         );
 
-        return await response.json();
+        const result = await response.json();
+
+        // =====================================================
+        // REPORT DOWNLOAD
+        // =====================================================
+
+        const reportArea =
+            document.getElementById('reportDownloadArea');
+
+        const reportButton =
+            document.getElementById('downloadReportBtn');
+
+        if (
+            result.report_url &&
+            reportArea &&
+            reportButton
+        ) {
+            reportButton.href = result.report_url;
+
+            // Important: make the download button visible
+            reportArea.style.display = 'block';
+        }
+
+        return result;
 
     } catch (error) {
 
-        console.error('Verification error:', error);
+        console.error(
+            'Verification error:',
+            error
+        );
 
         return {
             success: false,
-            error: 'The verification service is unavailable.'
+            error:
+                'The verification service is unavailable.'
         };
     }
 }
@@ -817,6 +843,30 @@ function showResult(data) {
 
 
         <div class="result-actions">
+        <div
+    id="reportDownloadArea"
+    style="
+        display:none;
+        margin-top:15px;
+        text-align:center;
+    "
+>
+    <a
+        id="downloadReportBtn"
+        class="btn-primary"
+        href="#"
+        target="_blank"
+        rel="noopener"
+        style="
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            text-decoration:none;
+        "
+    >
+        📄 Download Verification Report
+    </a>
+</div>
 
             <button
                 class="btn-primary"
