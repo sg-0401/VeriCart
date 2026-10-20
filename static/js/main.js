@@ -842,52 +842,45 @@ function showResult(data) {
         ${caseLine}
 
 
-        <div class="result-actions">
-        <div
-    id="reportDownloadArea"
-    style="
-        display:none;
-        margin-top:15px;
-        text-align:center;
-    "
->
-    <a
-        id="downloadReportBtn"
+       <div class="result-actions">
+
+    <button
         class="btn-primary"
-        href="#"
-        target="_blank"
-        rel="noopener"
+        id="resultClose"
+    >
+        Close
+    </button>
+
+    <a
+        class="btn-icon-secondary"
+        href="/management"
         style="
-            display:inline-flex;
+            text-decoration:none;
+            display:flex;
             align-items:center;
             justify-content:center;
-            text-decoration:none;
         "
     >
-        📄 Download Verification Report
+        Management Queue
     </a>
+
+    ${
+        data.report_url
+            ? `
+                <a
+                    class="btn-report-download"
+                    id="downloadReportBtn"
+                    href="${esc(data.report_url)}"
+                    target="_blank"
+                    rel="noopener"
+                >
+                    📄 Download Verification Report
+                </a>
+            `
+            : ''
+    }
+
 </div>
-
-            <button
-                class="btn-primary"
-                id="resultClose"
-            >
-                Close
-            </button>
-
-            <a
-                class="btn-icon-secondary"
-                href="/management"
-                style="
-                    text-decoration:none;
-                    display:flex;
-                    align-items:center;
-                "
-            >
-                Management Queue
-            </a>
-
-        </div>
     `;
 
 
