@@ -1,3 +1,4 @@
+
 """
 Evidence validation and product/damage analysis for VeriCart.
 
@@ -204,19 +205,10 @@ def image_quality(img):
     return {
         "width": int(w),
         "height": int(h),
-        "laplacian_variance": round(
-            lap,
-            2
-        ),
+        "laplacian_variance": round(lap, 2),
         "resolution_ok": resolution_ok,
-        "sharpness_score": round(
-            sharpness_score,
-            3
-        ),
-        "quality_score": round(
-            float(quality),
-            3
-        ),
+        "sharpness_score": round(sharpness_score, 3),
+        "quality_score": round(float(quality), 3),
         "is_blurry": (
             lap < 45
             or
@@ -237,7 +229,6 @@ def _feature_similarity(a, b):
     """
 
     try:
-
         detector = cv2.SIFT_create(
             nfeatures=1000
         )
@@ -246,7 +237,6 @@ def _feature_similarity(a, b):
         ratio = 0.72
 
     except Exception:
-
         detector = cv2.ORB_create(
             nfeatures=1200
         )
@@ -299,31 +289,21 @@ def _feature_similarity(a, b):
     inliers = 0
 
     if len(good) >= 4:
-
         src = np.float32(
             [
                 ka[m.queryIdx].pt
                 for m in good
             ]
-        ).reshape(
-            -1,
-            1,
-            2
-        )
+        ).reshape(-1, 1, 2)
 
         dst = np.float32(
             [
                 kb[m.trainIdx].pt
                 for m in good
             ]
-        ).reshape(
-            -1,
-            1,
-            2
-        )
+        ).reshape(-1, 1, 2)
 
         try:
-
             _, mask = cv2.findHomography(
                 src,
                 dst,
@@ -332,23 +312,15 @@ def _feature_similarity(a, b):
             )
 
             if mask is not None:
-                inliers = int(
-                    mask.sum()
-                )
+                inliers = int(mask.sum())
 
         except Exception:
             inliers = 0
 
     feature_score = (
-        min(
-            1.0,
-            inliers / 25.0
-        ) * 0.75
+        min(1.0, inliers / 25.0) * 0.75
         +
-        min(
-            1.0,
-            len(good) / 80.0
-        ) * 0.25
+        min(1.0, len(good) / 80.0) * 0.25
     )
 
     return (
@@ -391,15 +363,8 @@ def _hist_similarity(a, b):
         [0, 180, 0, 256]
     )
 
-    cv2.normalize(
-        ha,
-        ha
-    )
-
-    cv2.normalize(
-        hb,
-        hb
-    )
+    cv2.normalize(ha, ha)
+    cv2.normalize(hb, hb)
 
     corr = float(
         cv2.compareHist(
@@ -432,9 +397,7 @@ def _load(path):
     ):
         return None
 
-    return cv2.imread(
-        str(path)
-    )
+    return cv2.imread(str(path))
 
 
 # ============================================================
@@ -451,7 +414,6 @@ def _demo_signature_score(img, paths):
     best = 0.0
 
     for p in paths:
-
         ref = _load(p)
 
         if ref is None:
@@ -471,10 +433,7 @@ def _demo_signature_score(img, paths):
             )
         )
 
-        best = max(
-            best,
-            sim
-        )
+        best = max(best, sim)
 
     return best
 
@@ -491,7 +450,6 @@ def _colour_label(img):
     crop = img[
         int(h * 0.18):
         int(h * 0.82),
-
         int(w * 0.18):
         int(w * 0.82)
     ]
@@ -517,48 +475,34 @@ def _colour_label(img):
         return "White/Silver"
 
     if np.mean(
-        (
-            hsv[:, :, 0] > 90
-        )
+        (hsv[:, :, 0] > 90)
         &
-        (
-            hsv[:, :, 0] < 135
-        )
+        (hsv[:, :, 0] < 135)
         &
         active
     ) > 0.20:
         return "Blue"
 
     if np.mean(
-        (
-            hsv[:, :, 0] < 15
-        )
+        (hsv[:, :, 0] < 15)
         &
         active
     ) > 0.18:
         return "Red"
 
     if np.mean(
-        (
-            hsv[:, :, 0] > 5
-        )
+        (hsv[:, :, 0] > 5)
         &
-        (
-            hsv[:, :, 0] < 30
-        )
+        (hsv[:, :, 0] < 30)
         &
         active
     ) > 0.20:
         return "Brown/Tan"
 
     if np.mean(
-        (
-            hsv[:, :, 0] > 35
-        )
+        (hsv[:, :, 0] > 35)
         &
-        (
-            hsv[:, :, 0] < 90
-        )
+        (hsv[:, :, 0] < 90)
         &
         active
     ) > 0.18:
@@ -575,7 +519,6 @@ def _ocr_text(img):
     """Extract text using Tesseract when available."""
 
     try:
-
         import pytesseract
 
         text = pytesseract.image_to_string(
@@ -586,7 +529,6 @@ def _ocr_text(img):
         return text.strip()
 
     except Exception:
-
         return ""
 
 
@@ -609,10 +551,7 @@ def extract_order_ids(text):
 
     return sorted(
         set(
-            match.replace(
-                " ",
-                ""
-            )
+            match.replace(" ", "")
             for match in matches
         )
     )
@@ -629,24 +568,19 @@ def analyze_frame(
 ):
     """Analyse one image frame."""
 
-    quality = image_quality(
-        img
-    )
+    quality = image_quality(img)
 
     candidates = []
 
     for name, path in REFERENCE_IMAGES.items():
-
         ref = _load(path)
 
         if ref is None:
             continue
 
-        feat, good, inliers = (
-            _feature_similarity(
-                img,
-                ref
-            )
+        feat, good, inliers = _feature_similarity(
+            img,
+            ref
         )
 
         hist = _hist_similarity(
@@ -691,9 +625,7 @@ def analyze_frame(
     )
 
     expected_ref = _load(
-        REFERENCE_IMAGES.get(
-            expected_product
-        )
+        REFERENCE_IMAGES.get(expected_product)
     )
 
     expected_score = next(
@@ -708,11 +640,7 @@ def analyze_frame(
     demo_damage = (
         _demo_signature_score(
             img,
-            [
-                DEMO_DAMAGE.get(
-                    expected_product
-                )
-            ]
+            [DEMO_DAMAGE.get(expected_product)]
         )
         if expected_product in DEMO_DAMAGE
         else 0
@@ -721,11 +649,7 @@ def analyze_frame(
     demo_wrong = (
         _demo_signature_score(
             img,
-            [
-                DEMO_WRONG.get(
-                    expected_product
-                )
-            ]
+            [DEMO_WRONG.get(expected_product)]
         )
         if expected_product in DEMO_WRONG
         else 0
@@ -733,29 +657,39 @@ def analyze_frame(
 
     detected_product = best["product"]
 
-    product_confidence = float(
-        best["score"]
-    )
+    product_confidence = float(best["score"])
 
     # --------------------------------------------------------
     # DEMO WRONG PRODUCT
     # --------------------------------------------------------
 
     if demo_wrong >= 0.78:
+        wrong_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate["product"] != expected_product
+        ]
 
-        product_confidence = max(
-            product_confidence,
-            0.94
+        best_wrong = (
+            max(
+                wrong_candidates,
+                key=lambda x: x["score"]
+            )
+            if wrong_candidates
+            else None
         )
 
-        detected_product = next(
-            (
-                p
-                for p in REFERENCE_IMAGES
-                if p != expected_product
-            ),
-            best["product"]
-        )
+        if (
+            best_wrong is not None
+            and best_wrong["score"] >= 0.40
+            and best_wrong["score"] > expected_score
+        ):
+            detected_product = best_wrong["product"]
+            product_confidence = float(best_wrong["score"])
+
+        else:
+            detected_product = None
+            product_confidence = 0.0
 
     # --------------------------------------------------------
     # DEMO DAMAGE
@@ -763,10 +697,8 @@ def analyze_frame(
 
     elif (
         expected_product
-        and
-        demo_damage >= 0.84
+        and demo_damage >= 0.84
     ):
-
         detected_product = expected_product
 
         product_confidence = max(
@@ -774,9 +706,7 @@ def analyze_frame(
             0.94
         )
 
-    color = _colour_label(
-        img
-    )
+    color = _colour_label(img)
 
     anomaly = (
         1.0 - expected_score
@@ -786,10 +716,7 @@ def analyze_frame(
 
     anomaly = max(
         0.0,
-        min(
-            1.0,
-            anomaly
-        )
+        min(1.0, anomaly)
     )
 
     # --------------------------------------------------------
@@ -797,20 +724,15 @@ def analyze_frame(
     # --------------------------------------------------------
 
     if demo_damage >= 0.84:
-
         damage_conf = 0.96
         damage_detected = True
 
     else:
-
         damage_conf = min(
             0.72,
             anomaly * 0.65
             +
-            (
-                1 -
-                quality["sharpness_score"]
-            ) * 0.2
+            (1 - quality["sharpness_score"]) * 0.2
         )
 
         damage_detected = (
@@ -826,70 +748,36 @@ def analyze_frame(
             detected_product,
 
         "product_confidence":
-            round(
-                product_confidence,
-                3
-            ),
+            round(product_confidence, 3),
 
         "expected_product_similarity":
-            round(
-                expected_score,
-                3
-            ),
+            round(expected_score, 3),
 
         "color":
             color,
 
         "damage_detected":
-            bool(
-                damage_detected
-            ),
+            bool(damage_detected),
 
         "damage_confidence":
-            round(
-                float(
-                    damage_conf
-                ),
-                3
-            ),
+            round(float(damage_conf), 3),
 
         "anomaly_score":
-            round(
-                float(
-                    anomaly * 10
-                ),
-                2
-            ),
+            round(float(anomaly * 10), 2),
 
         "candidates": [
             {
                 **x,
-                "score":
-                    round(
-                        float(
-                            x["score"]
-                        ),
-                        3
-                    )
+                "score": round(float(x["score"]), 3)
             }
             for x in candidates[:5]
         ],
 
         "demo_damage_match":
-            round(
-                float(
-                    demo_damage
-                ),
-                3
-            ),
+            round(float(demo_damage), 3),
 
         "demo_wrong_match":
-            round(
-                float(
-                    demo_wrong
-                ),
-                3
-            ),
+            round(float(demo_wrong), 3),
     }
 
 
@@ -915,19 +803,15 @@ def analyze_evidence(
     """
 
     # --------------------------------------------------------
-    # Decode frames
+    # DECODE FRAMES
     # --------------------------------------------------------
 
     frames = []
 
     for data in image_bytes_list:
-
-        frames.append(
-            _read_image(data)
-        )
+        frames.append(_read_image(data))
 
     if not frames:
-
         raise ValueError(
             "No usable evidence frame was found."
         )
@@ -937,34 +821,23 @@ def analyze_evidence(
     # --------------------------------------------------------
 
     try:
-
         if video:
-
             ai_media = detect_ai_video(
                 image_bytes_list
             )
-
         else:
-
-            # For an image upload there is only one
-            # evidence image.
             ai_media = detect_ai_image(
                 image_bytes_list[0]
             )
 
     except Exception as exc:
-
-        # AI detection must never make the
-        # entire return-verification system fail.
-
         ai_media = {
             "ai_probability": 0.0,
             "real_probability": 0.0,
             "label": "unavailable",
             "status": "unavailable",
             "confidence": 0.0,
-            "model":
-                "Smogy/SMOGY-Ai-images-detector",
+            "model": "Smogy/SMOGY-Ai-images-detector",
             "error": str(exc),
         }
 
@@ -984,27 +857,22 @@ def analyze_evidence(
     # Best quality frame
     best_quality = max(
         analyses,
-        key=lambda x:
-            x["quality"]["quality_score"]
+        key=lambda x: x["quality"]["quality_score"]
     )
 
     # Strongest damage signal
     best_damage = max(
         analyses,
-        key=lambda x:
-            x["damage_confidence"]
+        key=lambda x: x["damage_confidence"]
     )
 
     # Strongest product signal
     best_product = max(
         analyses,
-        key=lambda x:
-            x["product_confidence"]
+        key=lambda x: x["product_confidence"]
     )
 
-    quality = best_quality[
-        "quality"
-    ]
+    quality = best_quality["quality"]
 
     # --------------------------------------------------------
     # QUALITY CHECK
@@ -1015,7 +883,6 @@ def analyze_evidence(
         and
         len(frames) == 1
     ):
-
         status = "invalid_evidence"
 
         reason = (
@@ -1026,33 +893,22 @@ def analyze_evidence(
         decision = "request_reupload"
 
     else:
-
-        detected = (
-            best_product[
-                "detected_product"
-            ]
-        )
+        detected = best_product["detected_product"]
 
         expected_match = (
             detected == expected_product
             and
-            best_product[
-                "expected_product_similarity"
-            ] >= 0.40
+            best_product["expected_product_similarity"] >= 0.40
         )
 
         wrong_product = (
             (
                 not expected_match
                 and
-                best_product[
-                    "product_confidence"
-                ] >= 0.55
+                best_product["product_confidence"] >= 0.55
             )
             or
-            best_product[
-                "demo_wrong_match"
-            ] >= 0.78
+            best_product["demo_wrong_match"] >= 0.78
         )
 
         # ----------------------------------------------------
@@ -1065,9 +921,7 @@ def analyze_evidence(
             "wrong_color",
             "wrong_size",
         ):
-
             if wrong_product:
-
                 status = "verified"
 
                 reason = (
@@ -1077,15 +931,10 @@ def analyze_evidence(
                     "with the order."
                 )
 
-                decision = (
-                    "verified_wrong_item"
-                )
+                decision = "verified_wrong_item"
 
             elif expected_match:
-
-                status = (
-                    "verified_no_issue"
-                )
+                status = "verified_no_issue"
 
                 reason = (
                     "The evidence appears to show "
@@ -1097,7 +946,6 @@ def analyze_evidence(
                 decision = "not_verified"
 
             else:
-
                 status = "uncertain"
 
                 reason = (
@@ -1113,18 +961,12 @@ def analyze_evidence(
         # ----------------------------------------------------
 
         else:
-
             if (
                 not expected_match
                 and
-                best_product[
-                    "product_confidence"
-                ] >= 0.62
+                best_product["product_confidence"] >= 0.62
             ):
-
-                status = (
-                    "verified_wrong_item"
-                )
+                status = "verified_wrong_item"
 
                 reason = (
                     "The evidence appears to show "
@@ -1132,22 +974,15 @@ def analyze_evidence(
                     "one in the order."
                 )
 
-                decision = (
-                    "verified_wrong_item"
-                )
+                decision = "verified_wrong_item"
 
             elif (
-                best_damage[
-                    "damage_detected"
-                ]
+                best_damage["damage_detected"]
                 and
-                best_damage[
-                    "damage_confidence"
-                ] >= 0.85
+                best_damage["damage_confidence"] >= 0.85
                 and
                 expected_match
             ):
-
                 status = "verified_damage"
 
                 reason = (
@@ -1156,21 +991,14 @@ def analyze_evidence(
                     "expected product."
                 )
 
-                decision = (
-                    "verified_damage"
-                )
+                decision = "verified_damage"
 
             elif (
                 expected_match
                 and
-                best_damage[
-                    "damage_confidence"
-                ] < 0.45
+                best_damage["damage_confidence"] < 0.45
             ):
-
-                status = (
-                    "verified_no_issue"
-                )
+                status = "verified_no_issue"
 
                 reason = (
                     "The expected product is visible, "
@@ -1181,7 +1009,6 @@ def analyze_evidence(
                 decision = "not_verified"
 
             else:
-
                 status = "uncertain"
 
                 reason = (
@@ -1210,28 +1037,18 @@ def analyze_evidence(
         or
         decision == "verified_wrong_item"
     ):
-
         for frame in frames[:5]:
-
-            text = _ocr_text(
-                frame
-            )
+            text = _ocr_text(frame)
 
             if text:
+                ocr_text += "\n" + text
 
-                ocr_text += (
-                    "\n" + text
-                )
-
-        order_ids = extract_order_ids(
-            ocr_text
-        )
+        order_ids = extract_order_ids(ocr_text)
 
     package_order_match = bool(
         order_id
         and
-        order_id.upper()
-        in order_ids
+        order_id.upper() in order_ids
     )
 
     # --------------------------------------------------------
@@ -1244,17 +1061,11 @@ def analyze_evidence(
             "defect",
         )
         and
-        best_damage.get(
-            "demo_damage_match",
-            0
-        ) >= 0.84
+        best_damage.get("demo_damage_match", 0) >= 0.84
     ):
-
         status = "verified_damage"
 
-        decision = (
-            "verified_damage"
-        )
+        decision = "verified_damage"
 
         reason = (
             "Visible evidence of physical "
@@ -1266,29 +1077,23 @@ def analyze_evidence(
     # VARIANT ANALYSIS
     # --------------------------------------------------------
 
-    detected_color = (
-        best_product["color"]
-    )
+    detected_color = best_product["color"]
 
     color_match = (
         True
         if not expected_color
         or detected_color == "Unknown"
         else
-        detected_color.lower()
-        ==
-        expected_color.lower()
+        detected_color.lower() == expected_color.lower()
     )
 
     model_text_match = (
         True
         if not expected_model
         else
-        expected_model.lower()
-        .replace(" ", "")
+        expected_model.lower().replace(" ", "")
         in
-        ocr_text.lower()
-        .replace(" ", "")
+        ocr_text.lower().replace(" ", "")
     )
 
     size_match = True
@@ -1305,7 +1110,6 @@ def analyze_evidence(
         and
         detected_sizes
     ):
-
         size_match = (
             str(expected_size).upper()
             in detected_sizes
@@ -1324,12 +1128,9 @@ def analyze_evidence(
         and
         not color_match
     ):
-
         status = "verified"
 
-        decision = (
-            "verified_wrong_item"
-        )
+        decision = "verified_wrong_item"
 
         reason = (
             f"The detected colour "
@@ -1351,12 +1152,9 @@ def analyze_evidence(
         and
         not size_match
     ):
-
         status = "verified"
 
-        decision = (
-            "verified_wrong_item"
-        )
+        decision = "verified_wrong_item"
 
         reason = (
             f"The evidence/package text "
@@ -1381,7 +1179,6 @@ def analyze_evidence(
         and
         expected_match
     ):
-
         status = "uncertain"
 
         decision = "human_review"
@@ -1407,7 +1204,6 @@ def analyze_evidence(
         and
         not package_order_match
     ):
-
         status = "uncertain"
 
         decision = "human_review"
@@ -1423,86 +1219,46 @@ def analyze_evidence(
     # ========================================================
 
     return {
+        "status": status,
 
-        "status":
-            status,
+        "decision": decision,
 
-        "decision":
-            decision,
+        "reason": reason,
 
-        "reason":
-            reason,
-
-        # ----------------------------------------------------
         # AI MEDIA RESULT
-        # ----------------------------------------------------
+        "ai_media": ai_media,
 
-        "ai_media":
-            ai_media,
-
-        # ----------------------------------------------------
         # PRODUCT
-        # ----------------------------------------------------
-
-        "expected_product":
-            expected_product,
+        "expected_product": expected_product,
 
         "detected_product":
-            best_product[
-                "detected_product"
-            ],
+            best_product["detected_product"],
 
         "product_confidence":
-            best_product[
-                "product_confidence"
-            ],
+            best_product["product_confidence"],
 
         "expected_product_similarity":
-            best_product[
-                "expected_product_similarity"
-            ],
+            best_product["expected_product_similarity"],
 
-        # ----------------------------------------------------
         # COLOUR
-        # ----------------------------------------------------
-
         "detected_color":
-            best_product[
-                "color"
-            ],
+            best_product["color"],
 
-        # ----------------------------------------------------
         # DAMAGE
-        # ----------------------------------------------------
-
         "damage_detected":
-            best_damage[
-                "damage_detected"
-            ],
+            best_damage["damage_detected"],
 
         "damage_confidence":
-            best_damage[
-                "damage_confidence"
-            ],
+            best_damage["damage_confidence"],
 
         "anomaly_score":
-            best_damage[
-                "anomaly_score"
-            ],
+            best_damage["anomaly_score"],
 
-        # ----------------------------------------------------
         # QUALITY
-        # ----------------------------------------------------
+        "quality": quality,
 
-        "quality":
-            quality,
-
-        # ----------------------------------------------------
         # MEDIA
-        # ----------------------------------------------------
-
-        "frames_analyzed":
-            len(frames),
+        "frames_analyzed": len(frames),
 
         "media_type":
             "video"
@@ -1510,48 +1266,28 @@ def analyze_evidence(
             else
             "image",
 
-        # ----------------------------------------------------
         # OCR
-        # ----------------------------------------------------
+        "ocr_text": ocr_text[:2000],
 
-        "ocr_text":
-            ocr_text[:2000],
+        "order_ids_found": order_ids,
 
-        "order_ids_found":
-            order_ids,
+        "package_order_match": package_order_match,
 
-        "package_order_match":
-            package_order_match,
-
-        # ----------------------------------------------------
         # VARIANTS
-        # ----------------------------------------------------
+        "expected_color": expected_color,
 
-        "expected_color":
-            expected_color,
+        "color_match": color_match,
 
-        "color_match":
-            color_match,
+        "expected_size": expected_size,
 
-        "expected_size":
-            expected_size,
+        "detected_sizes": detected_sizes,
 
-        "detected_sizes":
-            detected_sizes,
+        "size_match": size_match,
 
-        "size_match":
-            size_match,
+        "expected_model": expected_model,
 
-        "expected_model":
-            expected_model,
+        "model_text_match": model_text_match,
 
-        "model_text_match":
-            model_text_match,
-
-        # ----------------------------------------------------
         # FRAME DETAILS
-        # ----------------------------------------------------
-
-        "frame_results":
-            analyses,
+        "frame_results": analyses,
     }

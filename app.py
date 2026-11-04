@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
+import sqlite3
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import cv2
 
@@ -16,6 +19,14 @@ from flask import (
     jsonify,
     render_template,
     send_from_directory,
+    redirect,
+    url_for,
+    session,
+)
+
+from werkzeug.security import (
+    generate_password_hash,
+    check_password_hash,
 )
 
 from dialogflow_agent.chatbot import (
@@ -40,13 +51,28 @@ app = Flask(__name__)
 
 app.secret_key = os.environ.get(
     "VERICART_SECRET",
-    "vericart-development-secret"
+    "temporary-vericart-development-secret-change-later"
+)
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=(
+        os.environ.get("VERICART_HTTPS", "false").lower()
+        == "true"
+    ),
+    PERMANENT_SESSION_LIFETIME=60 * 60 * 24,
 )
 
 BASE = Path(__file__).resolve().parent
 
-UPLOADS = BASE / "data" / "uploads"
+DATA_DIR = BASE / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+UPLOADS = DATA_DIR / "uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
+
+DATABASE = DATA_DIR / "users.db"
 
 AI_MEDIA_THRESHOLD = 0.60
 
@@ -64,6 +90,290 @@ ALLOWED_VIDEOS = {
     "video/x-msvideo",
     "video/mpeg",
 }
+
+
+# ============================================================
+# TEMPORARY SQLITE USER DATABASE
+# ============================================================
+
+def get_db():
+    """Create a SQLite database connection."""
+
+    connection = sqlite3.connect(DATABASE)
+    connection.row_factory = sqlite3.Row
+
+    return connection
+
+
+def initialize_database():
+    """Create the users table if it does not exist."""
+
+    with get_db() as connection:
+
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        connection.commit()
+
+
+initialize_database()
+
+
+# ============================================================
+# AUTHENTICATION PROTECTION
+# ============================================================
+
+@app.before_request
+def require_login():
+    """
+    Protect the dashboard and existing application APIs.
+
+    Login, signup and static files remain publicly accessible.
+    """
+
+    public_endpoints = {
+        "login",
+        "signup",
+        "static",
+    }
+
+    if request.endpoint in public_endpoints:
+        return None
+
+    if session.get("user_id"):
+        return None
+
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "success": False,
+            "error": "Please log in to continue.",
+            "login_required": True,
+        }), 401
+
+    return redirect(
+        url_for(
+            "login",
+            next=request.path
+        )
+    )
+
+
+def safe_redirect_target(target):
+    """Prevent external redirects after login/signup."""
+
+    if not target:
+        return None
+
+    parsed = urlparse(target)
+
+    if parsed.scheme or parsed.netloc:
+        return None
+
+    if not target.startswith("/"):
+        return None
+
+    if target.startswith("//"):
+        return None
+
+    return target
+
+
+# ============================================================
+# SIGNUP
+# ============================================================
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+
+        name = (request.form.get("name") or "").strip()
+
+        email = (
+            request.form.get("email") or ""
+        ).strip().lower()
+
+        password = request.form.get("password") or ""
+
+        confirm_password = (
+            request.form.get("confirm_password") or ""
+        )
+
+        if not name or not email or not password:
+
+            return render_template(
+                "signup.html",
+                error="Please fill in all the fields."
+            )
+
+        if len(name) > 100:
+
+            return render_template(
+                "signup.html",
+                error="Name must be under 100 characters."
+            )
+
+        if not re.fullmatch(
+            r"[^@\s]+@[^@\s]+\.[^@\s]+",
+            email
+        ):
+
+            return render_template(
+                "signup.html",
+                error="Please enter a valid email address."
+            )
+
+        if len(password) < 8:
+
+            return render_template(
+                "signup.html",
+                error="Password must contain at least 8 characters."
+            )
+
+        if password != confirm_password:
+
+            return render_template(
+                "signup.html",
+                error="Passwords do not match."
+            )
+
+        password_hash = generate_password_hash(password)
+
+        try:
+
+            with get_db() as connection:
+
+                cursor = connection.execute(
+                    """
+                    INSERT INTO users (
+                        name,
+                        email,
+                        password_hash,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        name,
+                        email,
+                        password_hash,
+                        datetime.now().isoformat(timespec="seconds"),
+                    )
+                )
+
+                user_id = cursor.lastrowid
+
+                connection.commit()
+
+            session.clear()
+
+            session["user_id"] = user_id
+            session["user_name"] = name
+            session["user_email"] = email
+            session.permanent = True
+
+            next_page = safe_redirect_target(
+                request.form.get("next")
+            )
+
+            return redirect(
+                next_page or url_for("index")
+            )
+
+        except sqlite3.IntegrityError:
+
+            return render_template(
+                "signup.html",
+                error="An account with this email already exists."
+            )
+
+    return render_template(
+        "signup.html",
+        next=request.args.get("next", "")
+    )
+
+
+# ============================================================
+# LOGIN
+# ============================================================
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+
+        email = (
+            request.form.get("email") or ""
+        ).strip().lower()
+
+        password = request.form.get("password") or ""
+
+        with get_db() as connection:
+
+            user = connection.execute(
+                """
+                SELECT *
+                FROM users
+                WHERE email = ?
+                """,
+                (email,)
+            ).fetchone()
+
+        if not user or not check_password_hash(
+            user["password_hash"],
+            password
+        ):
+
+            return render_template(
+                "login.html",
+                error="Incorrect email or password.",
+                next=request.form.get("next", "")
+            )
+
+        session.clear()
+
+        session["user_id"] = user["id"]
+        session["user_name"] = user["name"]
+        session["user_email"] = user["email"]
+        session.permanent = True
+
+        next_page = safe_redirect_target(
+            request.form.get("next")
+        )
+
+        return redirect(
+            next_page or url_for("index")
+        )
+
+    return render_template(
+        "login.html",
+        next=request.args.get("next", "")
+    )
+
+
+# ============================================================
+# LOGOUT
+# ============================================================
+
+@app.route("/logout")
+def logout():
+
+    session.clear()
+
+    return redirect(url_for("login"))
 
 
 # ============================================================
@@ -300,7 +610,6 @@ def _build_result(
 
         "case": case,
 
-        # Compatibility fields for existing score cards.
         "cnn": {
             "category": order["category"],
             "confidence": analysis["product_confidence"],
@@ -346,12 +655,21 @@ def _build_result(
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+
+    return render_template(
+        "index.html",
+        user_name=session.get("user_name"),
+        user_email=session.get("user_email"),
+    )
 
 
 @app.route("/management")
 def management():
-    return render_template("management.html")
+
+    return render_template(
+        "management.html",
+        user_name=session.get("user_name"),
+    )
 
 
 # ============================================================
@@ -391,10 +709,6 @@ def chat():
 
 @app.route("/api/verify", methods=["POST"])
 def verify():
-
-    # --------------------------------------------------------
-    # 1. RECEIVE UPLOAD
-    # --------------------------------------------------------
 
     if "evidence" not in request.files:
 
@@ -442,10 +756,6 @@ def verify():
             )
         }), 400
 
-    # --------------------------------------------------------
-    # 2. VALIDATE FILE TYPE
-    # --------------------------------------------------------
-
     mime = (
         file.mimetype or ""
     ).lower()
@@ -465,10 +775,6 @@ def verify():
     awaiting_video = bool(
         s.get("awaiting_unboxing_video")
     )
-
-    # --------------------------------------------------------
-    # 3. REQUIRE VIDEO AFTER A SUSPICIOUS IMAGE
-    # --------------------------------------------------------
 
     if awaiting_video and not is_video:
 
@@ -503,10 +809,6 @@ def verify():
                 session_id,
         })
 
-    # --------------------------------------------------------
-    # 4. SAVE UPLOAD
-    # --------------------------------------------------------
-
     path = _save_upload(
         file,
         session_id
@@ -528,10 +830,6 @@ def verify():
 
             video_meta = None
 
-        # ----------------------------------------------------
-        # 5. RUN EXISTING EVIDENCE ANALYSIS
-        # ----------------------------------------------------
-
         analysis = analyze_evidence(
             frames,
             order["product"],
@@ -550,10 +848,6 @@ def verify():
             "success": False,
             "error": str(exc)
         }), 400
-
-    # --------------------------------------------------------
-    # 6. AI MEDIA THRESHOLD
-    # --------------------------------------------------------
 
     ai_media = analysis.get(
         "ai_media",
@@ -577,10 +871,6 @@ def verify():
     risk = compute_risk_score(
         order_id=order_id
     )
-
-    # --------------------------------------------------------
-    # 7. IMAGE CROSSED 60%: REQUEST UNBOXING VIDEO
-    # --------------------------------------------------------
 
     if suspicious_media and not is_video:
 
@@ -619,10 +909,6 @@ def verify():
         )
 
         return jsonify(result)
-
-    # --------------------------------------------------------
-    # 8. VIDEO CROSSED 60%: HUMAN REVIEW
-    # --------------------------------------------------------
 
     if suspicious_media and is_video:
 
@@ -675,10 +961,6 @@ def verify():
 
         return jsonify(result)
 
-    # --------------------------------------------------------
-    # 9. NORMAL VERIFICATION
-    # --------------------------------------------------------
-
     final, label = _get_normal_decision(
         analysis
     )
@@ -705,10 +987,6 @@ def verify():
         "pending_ai_media",
         None
     )
-
-    # --------------------------------------------------------
-    # 10. BUILD FINAL RESULT AND PDF
-    # --------------------------------------------------------
 
     result = _build_result(
         session_id=session_id,
@@ -841,7 +1119,6 @@ def reset():
 
         reset_session(sid)
 
-        # Clear the additional evidence state too.
         s = get_session(sid)
 
         s.pop(
@@ -922,6 +1199,14 @@ if __name__ == "__main__":
 
     print(
         "Open http://localhost:5000"
+    )
+
+    print(
+        "Signup: http://localhost:5000/signup"
+    )
+
+    print(
+        "Login: http://localhost:5000/login"
     )
 
     print(

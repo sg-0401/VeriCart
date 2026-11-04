@@ -1,0 +1,108 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VeriCart — Login</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            font-family: Arial, sans-serif;
+            color: #f5f7ff;
+            background: #090d1a;
+            padding: 20px;
+        }
+        .auth-card {
+            width: 100%;
+            max-width: 420px;
+            padding: 38px;
+            border: 1px solid #303b58;
+            border-radius: 20px;
+            background: #121a2b;
+            box-shadow: 0 20px 60px #0008;
+        }
+        .logo { font-size: 27px; font-weight: bold; }
+        .logo span { color: #55d9ef; }
+        h2 { margin: 28px 0 8px; }
+        .sub { color: #9daac4; margin-bottom: 25px; }
+        label {
+            display: block;
+            margin: 17px 0 7px;
+            font-size: 13px;
+            color: #c4cde0;
+        }
+        input {
+            width: 100%;
+            padding: 13px;
+            border-radius: 9px;
+            border: 1px solid #35415e;
+            background: #0b1221;
+            color: white;
+            outline: none;
+        }
+        input:focus { border-color: #55d9ef; }
+        button {
+            width: 100%;
+            margin-top: 25px;
+            padding: 14px;
+            border: 0;
+            border-radius: 9px;
+            background: linear-gradient(100deg, #37c9e6, #8371ef);
+            color: #07101b;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .error {
+            padding: 11px;
+            border-radius: 8px;
+            background: #54232c;
+            color: #ffc2c9;
+            font-size: 13px;
+        }
+        .bottom {
+            margin-top: 22px;
+            text-align: center;
+            color: #aab4c9;
+            font-size: 14px;
+        }
+        a { color: #55d9ef; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <main class="auth-card">
+        <div class="logo">🛡️ Veri<span>Cart</span></div>
+        <h2>Welcome back</h2>
+        <p class="sub">Log in to continue to VeriCart.</p>
+
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('login') }}">
+            <input type="hidden" name="next" value="{{ next or '' }}">
+
+            <label for="email">Email address</label>
+            <input id="email" name="email" type="email"
+                   placeholder="Enter your email"
+                   autocomplete="email" required>
+
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password"
+                   placeholder="Enter your password"
+                   autocomplete="current-password" required>
+
+            <button type="submit">Log In</button>
+        </form>
+
+        <div class="bottom">
+            Don't have an account?
+            <a href="{{ url_for('signup') }}">Create an account</a>
+        </div>
+    </main>
+</body>
+</html>
