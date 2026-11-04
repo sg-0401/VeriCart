@@ -6,8 +6,14 @@ Detects whether submitted images appear:
 - AI-generated
 - Uncertain
 
-Videos are handled by analysing the sampled frames produced
+Videos are analysed using the sampled frames produced
 by VeriCart's existing video-processing pipeline.
+
+AI-media threshold:
+- Below 60%: Continue normal verification.
+- 60% or above: Request an unboxing video.
+
+Suspicious media is NOT automatically rejected.
 """
 
 from __future__ import annotations
@@ -17,22 +23,24 @@ from functools import lru_cache
 
 import torch
 from PIL import Image
-from transformers import AutoImageProcessor, AutoModelForImageClassification
+from transformers import (
+    AutoImageProcessor,
+    AutoModelForImageClassification,
+)
 
 
 MODEL_ID = "Smogy/SMOGY-Ai-images-detector"
 
+AI_MEDIA_THRESHOLD = 0.60
+
 
 @lru_cache(maxsize=1)
 def _load_model():
-    """
-    Load the AI detector once and cache it.
+    """Load and cache the AI detection model."""
 
-    Loading the model repeatedly for every uploaded image would
-    be unnecessarily slow.
-    """
-
-    processor = AutoImageProcessor.from_pretrained(MODEL_ID)
+    processor = AutoImageProcessor.from_pretrained(
+        MODEL_ID
+    )
 
     model = AutoModelForImageClassification.from_pretrained(
         MODEL_ID
@@ -44,25 +52,24 @@ def _load_model():
 
 
 def _image_from_bytes(image_bytes: bytes) -> Image.Image:
-    """Convert uploaded image bytes into RGB PIL image."""
+    """Convert uploaded image bytes into RGB format."""
 
     try:
-        image = Image.open(io.BytesIO(image_bytes))
+        image = Image.open(
+            io.BytesIO(image_bytes)
+        )
+
         return image.convert("RGB")
 
     except Exception as exc:
         raise ValueError(
-            "The uploaded image could not be decoded for AI detection."
+            "The uploaded image could not be decoded "
+            "for AI detection."
         ) from exc
 
 
 def _get_label_map(model):
-    """
-    Obtain the model's actual label mapping.
-
-    We do not hard-code class numbers because different models
-    can use different label ordering.
-    """
+    """Read the model's actual class labels."""
 
     return {
         int(index): str(label).lower()
@@ -70,19 +77,40 @@ def _get_label_map(model):
     }
 
 
+def _classify_probability(ai_probability: float):
+    """
+    Classify media using the 60% threshold.
+
+    This classification is a verification warning,
+    not an automatic rejection.
+    """
+
+    if ai_probability >= AI_MEDIA_THRESHOLD:
+
+        return {
+            "label": "ai_suspected",
+            "status": "suspicious",
+            "requires_unboxing_video": True,
+        }
+
+    return {
+        "label": "likely_real",
+        "status": "likely_real",
+        "requires_unboxing_video": False,
+    }
+
+
 def detect_ai_image(image_bytes: bytes) -> dict:
     """
-    Analyse a single image.
+    Analyse a single image for AI-generated characteristics.
 
-    Returns:
-        ai_probability
-        real_probability
-        label
-        status
-        confidence
+    Returns AI probability, real probability, confidence,
+    classification and whether an unboxing video is required.
     """
 
-    image = _image_from_bytes(image_bytes)
+    image = _image_from_bytes(
+        image_bytes
+    )
 
     processor, model = _load_model()
 
@@ -92,48 +120,63 @@ def detect_ai_image(image_bytes: bytes) -> dict:
     )
 
     with torch.no_grad():
-        outputs = model(**inputs)
+
+        outputs = model(
+            **inputs
+        )
 
     probabilities = torch.softmax(
         outputs.logits,
         dim=-1
     )[0]
 
-    labels = _get_label_map(model)
+    labels = _get_label_map(
+        model
+    )
 
     ai_probability = 0.0
     real_probability = 0.0
 
     for index, probability in enumerate(probabilities):
 
-        label = labels.get(index, "")
+        class_label = labels.get(
+            index,
+            ""
+        )
 
-        probability = float(probability)
+        probability = float(
+            probability
+        )
 
         if any(
-            word in label
+            word in class_label
             for word in (
                 "ai",
                 "fake",
                 "synthetic",
                 "generated",
-                "artificial"
+                "artificial",
             )
         ):
+
             ai_probability += probability
 
         elif any(
-            word in label
+            word in class_label
             for word in (
                 "real",
                 "authentic",
-                "human"
+                "human",
             )
         ):
+
             real_probability += probability
 
-    # Safety fallback.
-    if ai_probability == 0.0 and real_probability == 0.0:
+    # Fallback for models with unexpected class labels.
+    if (
+        ai_probability == 0.0
+        and real_probability == 0.0
+    ):
 
         top_index = int(
             torch.argmax(probabilities)
@@ -155,17 +198,25 @@ def detect_ai_image(image_bytes: bytes) -> dict:
                 "fake",
                 "synthetic",
                 "generated",
-                "artificial"
+                "artificial",
             )
         ):
+
             ai_probability = top_probability
-            real_probability = 1.0 - top_probability
+
+            real_probability = (
+                1.0 - top_probability
+            )
 
         else:
-            real_probability = top_probability
-            ai_probability = 1.0 - top_probability
 
-    # Keep values numerically safe.
+            real_probability = top_probability
+
+            ai_probability = (
+                1.0 - top_probability
+            )
+
+    # Keep probabilities within valid limits.
     ai_probability = max(
         0.0,
         min(1.0, ai_probability)
@@ -176,21 +227,9 @@ def detect_ai_image(image_bytes: bytes) -> dict:
         min(1.0, real_probability)
     )
 
-    # Classification thresholds.
-    if ai_probability >= 0.75:
-
-        label = "ai_suspected"
-        status = "suspicious"
-
-    elif ai_probability >= 0.45:
-
-        label = "uncertain"
-        status = "uncertain"
-
-    else:
-
-        label = "likely_real"
-        status = "likely_real"
+    classification = _classify_probability(
+        ai_probability
+    )
 
     confidence = max(
         ai_probability,
@@ -208,14 +247,19 @@ def detect_ai_image(image_bytes: bytes) -> dict:
             4
         ),
 
-        "label": label,
+        "label": classification["label"],
 
-        "status": status,
+        "status": classification["status"],
 
         "confidence": round(
             confidence,
             4
         ),
+
+        "requires_unboxing_video":
+            classification["requires_unboxing_video"],
+
+        "threshold": AI_MEDIA_THRESHOLD,
 
         "model": MODEL_ID,
     }
@@ -223,19 +267,21 @@ def detect_ai_image(image_bytes: bytes) -> dict:
 
 def detect_ai_video(frames: list[bytes]) -> dict:
     """
-    Analyse a video using the frames already extracted by VeriCart.
+    Analyse a video using its extracted frames.
 
-    Each sampled frame is analysed independently.
+    The final probability combines:
+    - Average AI probability across frames.
+    - Highest AI probability among the frames.
 
-    The final video score combines:
-        - average AI probability
-        - strongest suspicious frame
+    A suspicious result requests further evidence.
+    It does not automatically reject the return.
     """
 
     if not frames:
 
         raise ValueError(
-            "No video frames were available for AI detection."
+            "No video frames were available "
+            "for AI detection."
         )
 
     frame_results = []
@@ -244,18 +290,20 @@ def detect_ai_video(frames: list[bytes]) -> dict:
 
         try:
 
-            result = detect_ai_image(frame)
+            result = detect_ai_image(
+                frame
+            )
 
             frame_results.append({
                 "frame": index + 1,
-                **result
+                **result,
             })
 
         except Exception as exc:
 
             frame_results.append({
                 "frame": index + 1,
-                "error": str(exc)
+                "error": str(exc),
             })
 
     valid_results = [
@@ -267,7 +315,8 @@ def detect_ai_video(frames: list[bytes]) -> dict:
     if not valid_results:
 
         raise ValueError(
-            "None of the video frames could be analysed for AI detection."
+            "None of the video frames could be "
+            "analysed for AI detection."
         )
 
     ai_probabilities = [
@@ -284,27 +333,29 @@ def detect_ai_video(frames: list[bytes]) -> dict:
         ai_probabilities
     )
 
-    # Average is the main signal.
-    # Maximum captures a particularly suspicious frame.
     video_ai_probability = (
         mean_ai_probability * 0.75
-        + max_ai_probability * 0.25
+        +
+        max_ai_probability * 0.25
     )
 
-    if video_ai_probability >= 0.75:
+    video_ai_probability = max(
+        0.0,
+        min(1.0, video_ai_probability)
+    )
 
-        label = "ai_suspected"
-        status = "suspicious"
+    classification = _classify_probability(
+        video_ai_probability
+    )
 
-    elif video_ai_probability >= 0.45:
+    real_probability = (
+        1.0 - video_ai_probability
+    )
 
-        label = "uncertain"
-        status = "uncertain"
-
-    else:
-
-        label = "likely_real"
-        status = "likely_real"
+    confidence = max(
+        video_ai_probability,
+        real_probability
+    )
 
     return {
         "ai_probability": round(
@@ -313,21 +364,23 @@ def detect_ai_video(frames: list[bytes]) -> dict:
         ),
 
         "real_probability": round(
-            1.0 - video_ai_probability,
+            real_probability,
             4
         ),
 
-        "label": label,
+        "label": classification["label"],
 
-        "status": status,
+        "status": classification["status"],
 
         "confidence": round(
-            max(
-                video_ai_probability,
-                1.0 - video_ai_probability
-            ),
+            confidence,
             4
         ),
+
+        "requires_unboxing_video":
+            classification["requires_unboxing_video"],
+
+        "threshold": AI_MEDIA_THRESHOLD,
 
         "frames_analyzed": len(
             valid_results

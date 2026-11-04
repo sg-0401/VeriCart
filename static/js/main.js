@@ -1,14 +1,24 @@
+
 const state = {
     sessionId: 'sess_' + Math.random().toString(36).slice(2, 11),
     orderData: null,
     riskData: null,
     currentOrderId: null,
     grievance: null,
-    awaitingEvidence: false
+    awaitingEvidence: false,
+    awaitingUnboxingVideo: false,
+    reportUrl: null
 };
+
+const AI_MEDIA_THRESHOLD = 0.60;
 
 const $ = id => document.getElementById(id);
 const messages = $('messagesContainer');
+
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
 
 function esc(s) {
     const d = document.createElement('div');
@@ -132,16 +142,37 @@ function addEvidencePreview(file) {
 
 
 /* =========================================================
-   TYPING
+   TYPING INDICATOR
    ========================================================= */
 
 function typing(show) {
-    $('typingIndicator').classList.toggle('visible', show);
+    const indicator = $('typingIndicator');
+
+    if (!indicator) return;
+
+    indicator.classList.toggle('visible', show);
 
     if (show) {
-        messages.appendChild($('typingIndicator'));
+        messages.appendChild(indicator);
         messages.scrollTop = messages.scrollHeight;
     }
+}
+
+
+/* =========================================================
+   UPLOAD VISIBILITY
+   ========================================================= */
+
+function showUploadControls() {
+    state.awaitingEvidence = true;
+
+    $('uploadZoneWrapper')?.classList.add('visible');
+}
+
+function hideUploadControls() {
+    state.awaitingEvidence = false;
+
+    $('uploadZoneWrapper')?.classList.remove('visible');
 }
 
 
@@ -191,7 +222,10 @@ async function send(text) {
 
     typing(false);
 
-    addMessage(data.reply, 'bot');
+    addMessage(
+        data.reply || 'How can I help you?',
+        'bot'
+    );
 
     if (data.order_data) {
         state.orderData = data.order_data;
@@ -213,8 +247,8 @@ async function send(text) {
         data.show_upload ||
         data.action === 'request_evidence'
     ) {
-        state.awaitingEvidence = true;
-        $('uploadZoneWrapper').classList.add('visible');
+        state.awaitingUnboxingVideo = false;
+        showUploadControls();
     }
 
     $('messageInput').disabled = false;
@@ -355,7 +389,16 @@ async function pipeline(file) {
     $('stepFuzzy').classList.add('active');
     $('stepFuzzyStatus').textContent = 'Making safe decision…';
 
-    const result = await verificationPromise;
+    let result;
+
+    try {
+        result = await verificationPromise;
+    } catch (error) {
+        result = {
+            success: false,
+            error: 'Evidence could not be analyzed.'
+        };
+    }
 
     await sleep(500);
 
@@ -378,6 +421,9 @@ async function pipeline(file) {
             result.error || 'Analysis failed',
             'error'
         );
+
+        // Allow another upload if verification failed.
+        showUploadControls();
     }
 }
 
@@ -385,6 +431,7 @@ async function pipeline(file) {
 /* =========================================================
    SEND IMAGE / VIDEO TO BACKEND
    ========================================================= */
+
 async function verify(file) {
     const formData = new FormData();
 
@@ -400,50 +447,33 @@ async function verify(file) {
     );
 
     try {
-        const response = await fetch(
-            '/api/verify',
-            {
-                method: 'POST',
-                body: formData
-            }
-        );
+        const response = await fetch('/api/verify', {
+            method: 'POST',
+            body: formData
+        });
 
         const result = await response.json();
 
-        // =====================================================
-        // REPORT DOWNLOAD
-        // =====================================================
+        if (!response.ok) {
+            return {
+                success: false,
+                error: result.error || 'Verification request failed.'
+            };
+        }
 
-        const reportArea =
-            document.getElementById('reportDownloadArea');
-
-        const reportButton =
-            document.getElementById('downloadReportBtn');
-
-        if (
-            result.report_url &&
-            reportArea &&
-            reportButton
-        ) {
-            reportButton.href = result.report_url;
-
-            // Important: make the download button visible
-            reportArea.style.display = 'block';
+        // Preserve the report URL for the result card.
+        if (result.report_url) {
+            state.reportUrl = result.report_url;
         }
 
         return result;
 
     } catch (error) {
-
-        console.error(
-            'Verification error:',
-            error
-        );
+        console.error('Verification error:', error);
 
         return {
             success: false,
-            error:
-                'The verification service is unavailable.'
+            error: 'The verification service is unavailable.'
         };
     }
 }
@@ -462,10 +492,7 @@ function score(id, value, pct) {
     valueElement.textContent = value;
 
     barElement.style.width =
-        Math.max(
-            0,
-            Math.min(100, pct)
-        ) + '%';
+        Math.max(0, Math.min(100, pct)) + '%';
 }
 
 
@@ -474,27 +501,30 @@ function score(id, value, pct) {
    ========================================================= */
 
 function getAiMediaData(analysis) {
+    return analysis?.ai_media || {};
+}
 
-    /*
-     * Backend should return:
-     *
-     * analysis.ai_media = {
-     *     ai_probability,
-     *     real_probability,
-     *     confidence,
-     *     label,
-     *     status,
-     *     model
-     * }
-     */
 
-    return analysis.ai_media || {};
+function getAiProbability(aiMedia) {
+    let probability = Number(aiMedia?.ai_probability);
+
+    if (!Number.isFinite(probability)) {
+        probability = 0;
+    }
+
+    // Support detector results represented as percentages.
+    if (probability > 1) {
+        probability = probability / 100;
+    }
+
+    return Math.max(0, Math.min(1, probability));
 }
 
 
 function renderAiMedia(aiMedia) {
+    if (!aiMedia || typeof aiMedia !== 'object' ||
+        Object.keys(aiMedia).length === 0) {
 
-    if (!aiMedia || typeof aiMedia !== 'object') {
         return `
             <div style="
                 margin-top:10px;
@@ -508,19 +538,27 @@ function renderAiMedia(aiMedia) {
         `;
     }
 
-    const aiProbability =
-        Number(aiMedia.ai_probability || 0);
+    const aiProbability = getAiProbability(aiMedia);
 
-    const realProbability =
-        Number(aiMedia.real_probability || 0);
+    let realProbability = Number(aiMedia.real_probability);
 
-    const confidence =
-        Number(aiMedia.confidence || 0);
+    if (!Number.isFinite(realProbability)) {
+        realProbability = 1 - aiProbability;
+    }
+
+    if (realProbability > 1) {
+        realProbability = realProbability / 100;
+    }
+
+    const confidence = Number(aiMedia.confidence || 0);
 
     let icon = '🟢';
     let text = 'Likely Real';
 
-    if (aiMedia.status === 'suspicious') {
+    if (
+        aiMedia.status === 'suspicious' ||
+        aiProbability >= AI_MEDIA_THRESHOLD
+    ) {
         icon = '🔴';
         text = 'AI-generated media suspected';
     } else if (aiMedia.status === 'uncertain') {
@@ -552,35 +590,54 @@ function renderAiMedia(aiMedia) {
                 margin-bottom:6px;
             ">
                 <span>${icon} ${text}</span>
-
-                <b>
-                    ${(confidence * 100).toFixed(1)}%
-                </b>
+                <b>${(confidence * 100).toFixed(1)}% confidence</b>
             </div>
 
             <div style="
                 font-size:11px;
                 color:var(--text-muted);
-                line-height:1.6;
+                line-height:1.8;
             ">
                 AI probability:
                 ${(aiProbability * 100).toFixed(2)}%
+
                 <br>
 
                 Real probability:
                 ${(realProbability * 100).toFixed(2)}%
+
+                <br>
+
+                AI detection threshold:
+                60%
+            </div>
+
+            <div style="
+                height:7px;
+                background:rgba(255,255,255,.10);
+                border-radius:10px;
+                overflow:hidden;
+                margin-top:9px;
+            ">
+                <div style="
+                    height:100%;
+                    width:${aiProbability * 100}%;
+                    background:${aiProbability >= AI_MEDIA_THRESHOLD
+                        ? '#ef4444'
+                        : '#22c55e'};
+                    border-radius:10px;
+                "></div>
             </div>
 
             ${
                 aiMedia.model
                     ? `
                         <div style="
-                            margin-top:6px;
+                            margin-top:7px;
                             font-size:10px;
                             color:var(--text-muted);
                         ">
-                            Model:
-                            ${esc(aiMedia.model)}
+                            Model: ${esc(aiMedia.model)}
                         </div>
                     `
                     : ''
@@ -592,12 +649,50 @@ function renderAiMedia(aiMedia) {
 
 
 /* =========================================================
+   REPORT DOWNLOAD
+   ========================================================= */
+
+function renderReportLink(reportUrl) {
+    if (!reportUrl) return '';
+
+    return `
+        <div style="
+            margin-top:15px;
+            text-align:center;
+        ">
+            <a
+                class="btn-primary"
+                href="${esc(reportUrl)}"
+                target="_blank"
+                rel="noopener"
+                style="
+                    display:inline-flex;
+                    align-items:center;
+                    justify-content:center;
+                    text-decoration:none;
+                "
+            >
+                📄 Download Verification Report
+            </a>
+        </div>
+    `;
+}
+
+
+/* =========================================================
    RESULT CARD
    ========================================================= */
 
 function showResult(data) {
-
     const analysis = data.analysis || {};
+    const aiMedia = getAiMediaData(analysis);
+
+    const aiProbability = getAiProbability(aiMedia);
+
+    const needsUnboxingVideo =
+        data.final_decision === 'additional_evidence_required' ||
+        data.requires_unboxing_video === true ||
+        data.additional_evidence_required === true;
 
     const map = {
         approved: [
@@ -622,6 +717,12 @@ function showResult(data) {
             '❌',
             'No Sufficient Issue Identified',
             'notverified'
+        ],
+
+        additional_evidence_required: [
+            '🎥',
+            'Unboxing Video Required',
+            'review'
         ]
     };
 
@@ -629,13 +730,11 @@ function showResult(data) {
         icon,
         title,
         cssClass
-    ] =
-        map[data.final_decision] ||
-        map.human_review;
+    ] = map[data.final_decision] || map.human_review;
 
 
     /* ---------------------------------------------------------
-       Existing scores
+       UPDATE SCORES
        --------------------------------------------------------- */
 
     score(
@@ -656,7 +755,6 @@ function showResult(data) {
         (data.risk?.score ?? 0) * 10
     );
 
-
     const fuzzyScore =
         data.final_decision === 'approved'
             ? 2
@@ -664,7 +762,9 @@ function showResult(data) {
                 ? 5
                 : data.final_decision === 'reupload_required'
                     ? 4
-                    : 8;
+                    : data.final_decision === 'additional_evidence_required'
+                        ? 5
+                        : 8;
 
     score(
         'scoreFuzzy',
@@ -674,19 +774,10 @@ function showResult(data) {
 
 
     /* ---------------------------------------------------------
-       AI-generated media
-       --------------------------------------------------------- */
-
-    const aiMedia =
-        getAiMediaData(analysis);
-
-
-    /* ---------------------------------------------------------
-       Evidence flags
+       EVIDENCE FLAGS
        --------------------------------------------------------- */
 
     $('flagsBody').innerHTML = `
-
         <div style="
             display:flex;
             flex-direction:column;
@@ -705,32 +796,22 @@ function showResult(data) {
 
             <div>
                 <b>Expected:</b>
-                ${esc(
-                    analysis.expected_product ||
-                    'Unknown'
-                )}
+                ${esc(analysis.expected_product || 'Unknown')}
             </div>
 
             <div>
                 <b>Detected:</b>
-                ${esc(
-                    analysis.detected_product ||
-                    'Unknown'
-                )}
-
+                ${esc(analysis.detected_product || 'Unknown')}
                 (
-                ${Math.round(
-                    (analysis.product_confidence || 0) * 100
-                )}%
+                    ${Math.round(
+                        (analysis.product_confidence || 0) * 100
+                    )}%
                 )
             </div>
 
             <div>
                 <b>Detected colour:</b>
-                ${esc(
-                    analysis.detected_color ||
-                    'Unknown'
-                )}
+                ${esc(analysis.detected_color || 'Unknown')}
             </div>
 
             <div>
@@ -740,11 +821,10 @@ function showResult(data) {
                         ? '⚠️ Detected'
                         : 'Not confirmed'
                 }
-
                 (
-                ${Math.round(
-                    (analysis.damage_confidence || 0) * 100
-                )}%
+                    ${Math.round(
+                        (analysis.damage_confidence || 0) * 100
+                    )}%
                 )
             </div>
 
@@ -764,7 +844,7 @@ function showResult(data) {
 
 
     /* ---------------------------------------------------------
-       Management case
+       MANAGEMENT CASE
        --------------------------------------------------------- */
 
     const caseLine = data.case
@@ -779,11 +859,38 @@ function showResult(data) {
 
 
     /* ---------------------------------------------------------
-       Main result card
+       ADDITIONAL VIDEO REQUEST
        --------------------------------------------------------- */
 
-    $('resultCard').innerHTML = `
+    if (needsUnboxingVideo) {
+        state.awaitingUnboxingVideo = true;
 
+        addMessage(
+            `⚠️ The submitted product photo has an AI probability of ${(aiProbability * 100).toFixed(1)}%, which meets the 60% threshold.
+
+This does NOT mean your return is rejected.
+
+Please submit an **unboxing video** so that the evidence can be checked further.`,
+            'bot'
+        );
+
+        showUploadControls();
+
+    } else {
+        state.awaitingUnboxingVideo = false;
+        hideUploadControls();
+    }
+
+
+    /* ---------------------------------------------------------
+       RESULT CARD
+       --------------------------------------------------------- */
+
+    const explanation = needsUnboxingVideo
+        ? 'Additional evidence is required. Your return has not been rejected.'
+        : (analysis.reason || '');
+
+    $('resultCard').innerHTML = `
         <div class="result-icon ${cssClass}">
             ${icon}
         </div>
@@ -793,7 +900,7 @@ function showResult(data) {
         </div>
 
         <div class="result-subtitle">
-            ${esc(analysis.reason || '')}
+            ${esc(explanation)}
         </div>
 
         <div class="result-tags">
@@ -806,9 +913,7 @@ function showResult(data) {
             </span>
         </div>
 
-
         <div class="result-metrics">
-
             <div>
                 <span>Product match</span>
                 <b>
@@ -829,44 +934,30 @@ function showResult(data) {
 
             <div>
                 <span>Frames analyzed</span>
-                <b>
-                    ${analysis.frames_analyzed || 1}
-                </b>
+                <b>${analysis.frames_analyzed || 1}</b>
             </div>
-
         </div>
-
 
         ${renderAiMedia(aiMedia)}
 
+        ${
+            needsUnboxingVideo
+                ? `
+                    <div class="result-note" style="margin-top:12px">
+                        🎥 Please upload or record an unboxing video
+                        to continue verification.
+                        <br>
+                        <b>This is an additional evidence request, not a rejection.</b>
+                    </div>
+                `
+                : ''
+        }
+
         ${caseLine}
 
+        ${renderReportLink(data.report_url || state.reportUrl)}
 
         <div class="result-actions">
-        <div
-    id="reportDownloadArea"
-    style="
-        display:none;
-        margin-top:15px;
-        text-align:center;
-    "
->
-    <a
-        id="downloadReportBtn"
-        class="btn-primary"
-        href="#"
-        target="_blank"
-        rel="noopener"
-        style="
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            text-decoration:none;
-        "
-    >
-        📄 Download Verification Report
-    </a>
-</div>
 
             <button
                 class="btn-primary"
@@ -890,45 +981,40 @@ function showResult(data) {
         </div>
     `;
 
-
     $('resultCardWrapper').classList.add('active');
 
 
     /* ---------------------------------------------------------
-       Chat result
+       CHAT RESULT
        --------------------------------------------------------- */
 
-    let aiMessage = '';
+    if (!needsUnboxingVideo) {
+        let aiMessage = '';
 
-    if (aiMedia && aiMedia.confidence !== undefined) {
+        if (aiMedia && aiMedia.ai_probability !== undefined) {
+            aiMessage =
+                `\n🤖 AI-media probability: ${(aiProbability * 100).toFixed(1)}%.`;
+        }
 
-        const aiPercent =
-            (Number(aiMedia.confidence) * 100).toFixed(1);
+        if (data.final_decision === 'human_review') {
+            addMessage(
+                `🟡 **Human Verification Required**
 
-        aiMessage =
-            `\n🤖 AI-media check: ${esc(
-                aiMedia.status || 'checked'
-            )} (${aiPercent}% confidence)`;
-    }
+${analysis.reason || 'The submitted evidence requires manual verification.'}
 
+${data.case
+                    ? 'A case has been sent to the management queue.'
+                    : ''}${aiMessage}`,
+                'bot'
+            );
+        } else {
+            addMessage(
+                `${icon} **${title}**
 
-    addMessage(
-        `${icon} **${title}**
-${analysis.reason || ''}${data.case
-            ? ' A case has been sent to management for human verification.'
-            : ''}${aiMessage}`,
-        'bot'
-    );
-
-
-    if (
-        data.final_decision ===
-        'reupload_required'
-    ) {
-        state.awaitingEvidence = true;
-
-        $('uploadZoneWrapper')
-            .classList.add('visible');
+${analysis.reason || ''}${aiMessage}`,
+                'bot'
+            );
+        }
     }
 }
 
@@ -942,9 +1028,7 @@ let cameraMode = null;
 
 
 function stopCamera() {
-
     if (cameraStream) {
-
         cameraStream
             .getTracks()
             .forEach(track => track.stop());
@@ -956,13 +1040,7 @@ function stopCamera() {
 }
 
 
-/*
- * Opens the real browser camera.
- *
- * This does NOT use the normal upload picker.
- */
 async function openCamera(mode) {
-
     if (!navigator.mediaDevices ||
         !navigator.mediaDevices.getUserMedia) {
 
@@ -974,29 +1052,22 @@ async function openCamera(mode) {
         return;
     }
 
-
     try {
-
         cameraMode = mode;
 
         cameraStream =
             await navigator.mediaDevices.getUserMedia({
-
                 video: {
                     facingMode: {
                         ideal: 'environment'
                     }
                 },
-
                 audio: mode === 'video'
-
             });
-
 
         showCameraModal(mode);
 
     } catch (error) {
-
         console.error('Camera error:', error);
 
         toast(
@@ -1014,18 +1085,13 @@ async function openCamera(mode) {
    ========================================================= */
 
 function showCameraModal(mode) {
-
-    const existing =
-        document.getElementById('cameraModal');
+    const existing = document.getElementById('cameraModal');
 
     if (existing) {
         existing.remove();
     }
 
-
-    const modal =
-        document.createElement('div');
-
+    const modal = document.createElement('div');
     modal.id = 'cameraModal';
 
     modal.style.cssText = `
@@ -1039,9 +1105,7 @@ function showCameraModal(mode) {
         padding:20px;
     `;
 
-
-    const box =
-        document.createElement('div');
+    const box = document.createElement('div');
 
     box.style.cssText = `
         width:min(700px,95vw);
@@ -1056,15 +1120,12 @@ function showCameraModal(mode) {
         gap:12px;
     `;
 
-
     const title =
         mode === 'photo'
             ? '📷 Take Product Photo'
-            : '🎥 Record Product Video';
-
+            : '🎥 Record Unboxing Video';
 
     box.innerHTML = `
-
         <div style="
             display:flex;
             justify-content:space-between;
@@ -1073,7 +1134,6 @@ function showCameraModal(mode) {
             font-size:16px;
             font-weight:700;
         ">
-
             <span>${title}</span>
 
             <button
@@ -1091,9 +1151,7 @@ function showCameraModal(mode) {
             >
                 ✕
             </button>
-
         </div>
-
 
         <video
             id="cameraPreview"
@@ -1109,12 +1167,10 @@ function showCameraModal(mode) {
             "
         ></video>
 
-
         <canvas
             id="cameraCanvas"
             style="display:none"
         ></canvas>
-
 
         <div style="
             display:flex;
@@ -1122,7 +1178,6 @@ function showCameraModal(mode) {
             gap:10px;
             flex-wrap:wrap;
         ">
-
             ${
                 mode === 'photo'
                     ? `
@@ -1130,10 +1185,7 @@ function showCameraModal(mode) {
                             id="cameraCapture"
                             type="button"
                             class="btn-primary"
-                            style="
-                                padding:12px 22px;
-                                cursor:pointer;
-                            "
+                            style="padding:12px 22px;cursor:pointer"
                         >
                             📸 Capture Photo
                         </button>
@@ -1143,55 +1195,31 @@ function showCameraModal(mode) {
                             id="cameraRecord"
                             type="button"
                             class="btn-primary"
-                            style="
-                                padding:12px 22px;
-                                cursor:pointer;
-                            "
+                            style="padding:12px 22px;cursor:pointer"
                         >
                             🔴 Start Recording
                         </button>
                     `
             }
-
         </div>
-
     `;
 
-
-    box.appendChild(
-        document.createElement('div')
-    );
-
     modal.appendChild(box);
-
     document.body.appendChild(modal);
 
-
-    const video =
-        document.getElementById('cameraPreview');
-
+    const video = document.getElementById('cameraPreview');
     video.srcObject = cameraStream;
 
-
-    document
-        .getElementById('cameraClose')
-        .onclick = () => {
-
-            stopCamera();
-            modal.remove();
-        };
-
+    document.getElementById('cameraClose').onclick = () => {
+        stopCamera();
+        modal.remove();
+    };
 
     if (mode === 'photo') {
-
-        document
-            .getElementById('cameraCapture')
-            .onclick = capturePhoto;
-
+        document.getElementById('cameraCapture').onclick =
+            capturePhoto;
     } else {
-
         setupVideoRecording();
-
     }
 }
 
@@ -1201,35 +1229,18 @@ function showCameraModal(mode) {
    ========================================================= */
 
 function capturePhoto() {
-
-    const video =
-        document.getElementById('cameraPreview');
-
-    const canvas =
-        document.getElementById('cameraCanvas');
-
+    const video = document.getElementById('cameraPreview');
+    const canvas = document.getElementById('cameraCanvas');
 
     if (!video.videoWidth) {
-
-        toast(
-            'Camera is not ready yet.',
-            'warning'
-        );
-
+        toast('Camera is not ready yet.', 'warning');
         return;
     }
 
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-    canvas.width =
-        video.videoWidth;
-
-    canvas.height =
-        video.videoHeight;
-
-
-    const context =
-        canvas.getContext('2d');
-
+    const context = canvas.getContext('2d');
 
     context.drawImage(
         video,
@@ -1239,33 +1250,20 @@ function capturePhoto() {
         canvas.height
     );
 
-
     canvas.toBlob(
         blob => {
-
             if (!blob) {
-
-                toast(
-                    'Could not capture the photo.',
-                    'error'
-                );
-
+                toast('Could not capture the photo.', 'error');
                 return;
             }
 
+            const file = new File(
+                [blob],
+                `vericart-camera-${Date.now()}.jpg`,
+                { type: 'image/jpeg' }
+            );
 
-            const file =
-                new File(
-                    [blob],
-                    `vericart-camera-${Date.now()}.jpg`,
-                    {
-                        type: 'image/jpeg'
-                    }
-                );
-
-
-            const modal =
-                document.getElementById('cameraModal');
+            const modal = document.getElementById('cameraModal');
 
             stopCamera();
 
@@ -1274,7 +1272,6 @@ function capturePhoto() {
             }
 
             handleFile(file);
-
         },
         'image/jpeg',
         0.92
@@ -1287,24 +1284,17 @@ function capturePhoto() {
    ========================================================= */
 
 function setupVideoRecording() {
-
-    const recordButton =
-        document.getElementById('cameraRecord');
+    const recordButton = document.getElementById('cameraRecord');
 
     if (!recordButton) return;
-
 
     let recorder = null;
     let chunks = [];
     let recording = false;
 
-
     recordButton.onclick = () => {
-
         if (!recording) {
-
             chunks = [];
-
 
             const mimeTypes = [
                 'video/webm;codecs=vp9',
@@ -1312,28 +1302,18 @@ function setupVideoRecording() {
                 'video/webm'
             ];
 
-
-            const supportedType =
-                mimeTypes.find(
-                    type =>
-                        MediaRecorder.isTypeSupported(type)
-                );
-
+            const supportedType = mimeTypes.find(
+                type => MediaRecorder.isTypeSupported(type)
+            );
 
             try {
-
-                recorder =
-                    new MediaRecorder(
-                        cameraStream,
-                        supportedType
-                            ? {
-                                mimeType: supportedType
-                            }
-                            : undefined
-                    );
-
+                recorder = new MediaRecorder(
+                    cameraStream,
+                    supportedType
+                        ? { mimeType: supportedType }
+                        : undefined
+                );
             } catch (error) {
-
                 console.error(error);
 
                 toast(
@@ -1344,54 +1324,30 @@ function setupVideoRecording() {
                 return;
             }
 
-
-            recorder.ondataavailable =
-                event => {
-
-                    if (event.data &&
-                        event.data.size > 0) {
-
-                        chunks.push(event.data);
-                    }
-                };
-
+            recorder.ondataavailable = event => {
+                if (event.data && event.data.size > 0) {
+                    chunks.push(event.data);
+                }
+            };
 
             recorder.onstop = () => {
+                const mimeType = recorder.mimeType || 'video/webm';
 
-                const mimeType =
-                    recorder.mimeType ||
-                    'video/webm';
-
-
-                const blob =
-                    new Blob(
-                        chunks,
-                        {
-                            type: mimeType
-                        }
-                    );
-
+                const blob = new Blob(
+                    chunks,
+                    { type: mimeType }
+                );
 
                 const extension =
-                    mimeType.includes('mp4')
-                        ? 'mp4'
-                        : 'webm';
+                    mimeType.includes('mp4') ? 'mp4' : 'webm';
 
+                const file = new File(
+                    [blob],
+                    `vericart-camera-${Date.now()}.${extension}`,
+                    { type: mimeType }
+                );
 
-                const file =
-                    new File(
-                        [blob],
-                        `vericart-camera-${Date.now()}.${extension}`,
-                        {
-                            type: mimeType
-                        }
-                    );
-
-
-                const modal =
-                    document.getElementById(
-                        'cameraModal'
-                    );
+                const modal = document.getElementById('cameraModal');
 
                 stopCamera();
 
@@ -1402,22 +1358,15 @@ function setupVideoRecording() {
                 handleFile(file);
             };
 
-
             recorder.start();
 
             recording = true;
 
-            recordButton.textContent =
-                '⏹ Stop Recording';
-
-            recordButton.style.background =
-                '#dc2626';
-
+            recordButton.textContent = '⏹ Stop Recording';
+            recordButton.style.background = '#dc2626';
 
         } else {
-
             recorder.stop();
-
             recording = false;
         }
     };
@@ -1429,62 +1378,48 @@ function setupVideoRecording() {
    ========================================================= */
 
 async function handleFile(file) {
-
     if (!state.currentOrderId) {
-
-        toast(
-            'Please provide an Order ID first.',
-            'warning'
-        );
-
+        toast('Please provide an Order ID first.', 'warning');
         return;
     }
 
-
     if (!state.awaitingEvidence) {
-
         toast(
             'Start a return request before uploading evidence.',
             'warning'
         );
-
         return;
     }
-
 
     if (file.size > 50 * 1024 * 1024) {
-
-        toast(
-            'Please keep evidence under 50 MB.',
-            'warning'
-        );
-
+        toast('Please keep evidence under 50 MB.', 'warning');
         return;
     }
 
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
 
-    if (
-        !file.type.startsWith('image/') &&
-        !file.type.startsWith('video/')
-    ) {
-
-        toast(
-            'Please select an image or video.',
-            'warning'
-        );
-
+    if (!isImage && !isVideo) {
+        toast('Please select an image or video.', 'warning');
         return;
     }
 
+    // When an unboxing video has been requested,
+    // do not accept another image.
+    if (state.awaitingUnboxingVideo && !isVideo) {
+        toast(
+            'An unboxing video is required. Please upload or record a video.',
+            'warning'
+        );
+        return;
+    }
 
+    // Initial evidence should be a product photo or video.
     state.awaitingEvidence = false;
 
-    $('uploadZoneWrapper')
-        .classList.remove('visible');
-
+    hideUploadControls();
 
     addEvidencePreview(file);
-
 
     typing(true);
 
@@ -1492,12 +1427,12 @@ async function handleFile(file) {
 
     typing(false);
 
-
     addMessage(
-        'Evidence received. I will check whether it is clear, whether it shows the expected product, whether it supports your grievance, and whether the media appears AI-generated.',
+        state.awaitingUnboxingVideo
+            ? 'Unboxing video received. I will analyze the video evidence before deciding the next step.'
+            : 'Evidence received. I will check its quality, product match, grievance details, and whether the media appears AI-generated.',
         'bot'
     );
-
 
     await pipeline(file);
 }
@@ -1508,12 +1443,8 @@ async function handleFile(file) {
    ========================================================= */
 
 function toast(msg, type = 'info') {
-
-    const toastElement =
-        document.createElement('div');
-
+    const toastElement = document.createElement('div');
     toastElement.className = 'toast';
-
 
     const icon =
         type === 'error'
@@ -1524,16 +1455,12 @@ function toast(msg, type = 'info') {
                     ? '⚠️'
                     : '💡';
 
-
     toastElement.innerHTML = `
         <span>${icon}</span>
         <span>${esc(msg)}</span>
     `;
 
-
-    $('toastContainer')
-        .appendChild(toastElement);
-
+    $('toastContainer').appendChild(toastElement);
 
     setTimeout(
         () => toastElement.remove(),
@@ -1547,330 +1474,218 @@ function toast(msg, type = 'info') {
    ========================================================= */
 
 function setup() {
-
     $('sessionIdDisplay').textContent =
         '#' + state.sessionId;
 
+    // Upload controls start hidden.
+    hideUploadControls();
 
     addMessage(
         '👋 Welcome to **VeriCart**. I’ll first ask what went wrong, then your Order ID, and only then request photo/video evidence.'
     );
 
-
     /* ---------------------------------------------------------
-       Chat
+       CHAT
        --------------------------------------------------------- */
 
-    $('btnSend').onclick =
-        () => send(
-            $('messageInput').value
-        );
+    $('btnSend').onclick = () => send(
+        $('messageInput').value
+    );
 
-
-    $('messageInput').onkeydown =
-        event => {
-
-            if (event.key === 'Enter') {
-                send(
-                    $('messageInput').value
-                );
-            }
-        };
+    $('messageInput').onkeydown = event => {
+        if (event.key === 'Enter') {
+            send($('messageInput').value);
+        }
+    };
 
 
     /* ---------------------------------------------------------
-       New chat
+       NEW CHAT
        --------------------------------------------------------- */
 
-    $('btnNewChat').onclick =
-        async () => {
+    $('btnNewChat').onclick = async () => {
+        await fetch('/api/reset', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                session_id: state.sessionId
+            })
+        });
 
-            await fetch(
-                '/api/reset',
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type':
-                            'application/json'
-                    },
-                    body: JSON.stringify({
-                        session_id:
-                            state.sessionId
-                    })
-                }
-            );
-
-            location.reload();
-        };
+        location.reload();
+    };
 
 
     /* ---------------------------------------------------------
        FILE UPLOAD
        --------------------------------------------------------- */
 
-    const fileInput =
-        $('evidenceFileInput');
+    const fileInput = $('evidenceFileInput');
 
+    $('btnBrowse').onclick = event => {
+        event.stopPropagation();
+        fileInput.click();
+    };
 
-    $('btnBrowse').onclick =
-        event => {
+    $('uploadZone').onclick = event => {
+        if (
+            event.target.closest('#btnBrowse') ||
+            event.target.closest('#btnTakePhoto') ||
+            event.target.closest('#btnTakeVideo')
+        ) {
+            return;
+        }
 
-            event.stopPropagation();
+        fileInput.click();
+    };
 
-            fileInput.click();
-        };
+    fileInput.onchange = event => {
+        const file = event.target.files?.[0];
 
+        if (file) {
+            handleFile(file);
+        }
 
-    /*
-     * IMPORTANT:
-     * Clicking the upload area itself should open
-     * the normal file picker ONLY.
-     */
-
-    $('uploadZone').onclick =
-        event => {
-
-            if (
-                event.target.closest(
-                    '#btnBrowse'
-                ) ||
-
-                event.target.closest(
-                    '#btnTakePhoto'
-                ) ||
-
-                event.target.closest(
-                    '#btnTakeVideo'
-                )
-            ) {
-                return;
-            }
-
-            fileInput.click();
-        };
-
-
-    fileInput.onchange =
-        event => {
-
-            const file =
-                event.target.files?.[0];
-
-            if (file) {
-                handleFile(file);
-            }
-
-            fileInput.value = '';
-        };
+        fileInput.value = '';
+    };
 
 
     /* ---------------------------------------------------------
        TAKE PHOTO
        --------------------------------------------------------- */
 
-    $('btnTakePhoto').onclick =
-        async event => {
+    $('btnTakePhoto').onclick = async event => {
+        event.preventDefault();
+        event.stopPropagation();
 
-            event.preventDefault();
-            event.stopPropagation();
+        if (!state.currentOrderId) {
+            toast('Please provide an Order ID first.', 'warning');
+            return;
+        }
 
-            if (!state.currentOrderId) {
+        if (!state.awaitingEvidence) {
+            toast(
+                'Start a return request before capturing evidence.',
+                'warning'
+            );
+            return;
+        }
 
-                toast(
-                    'Please provide an Order ID first.',
-                    'warning'
-                );
+        if (state.awaitingUnboxingVideo) {
+            toast(
+                'An unboxing video is required, not another photo.',
+                'warning'
+            );
+            return;
+        }
 
-                return;
-            }
-
-
-            if (!state.awaitingEvidence) {
-
-                toast(
-                    'Start a return request before capturing evidence.',
-                    'warning'
-                );
-
-                return;
-            }
-
-
-            await openCamera('photo');
-        };
+        await openCamera('photo');
+    };
 
 
     /* ---------------------------------------------------------
        TAKE VIDEO
        --------------------------------------------------------- */
 
-    $('btnTakeVideo').onclick =
-        async event => {
+    $('btnTakeVideo').onclick = async event => {
+        event.preventDefault();
+        event.stopPropagation();
 
-            event.preventDefault();
-            event.stopPropagation();
+        if (!state.currentOrderId) {
+            toast('Please provide an Order ID first.', 'warning');
+            return;
+        }
 
-            if (!state.currentOrderId) {
+        if (!state.awaitingEvidence) {
+            toast(
+                'Start a return request before capturing evidence.',
+                'warning'
+            );
+            return;
+        }
 
-                toast(
-                    'Please provide an Order ID first.',
-                    'warning'
-                );
-
-                return;
-            }
-
-
-            if (!state.awaitingEvidence) {
-
-                toast(
-                    'Start a return request before capturing evidence.',
-                    'warning'
-                );
-
-                return;
-            }
-
-
-            await openCamera('video');
-        };
+        await openCamera('video');
+    };
 
 
     /* ---------------------------------------------------------
        DRAG & DROP
        --------------------------------------------------------- */
 
-    ['dragover', 'dragenter']
-        .forEach(eventName => {
+    ['dragover', 'dragenter'].forEach(eventName => {
+        $('uploadZone').addEventListener(eventName, event => {
+            event.preventDefault();
 
-            $('uploadZone')
-                .addEventListener(
-                    eventName,
-                    event => {
-
-                        event.preventDefault();
-
-                        $('uploadZone')
-                            .classList.add(
-                                'drag-over'
-                            );
-                    }
-                );
+            $('uploadZone').classList.add('drag-over');
         });
+    });
 
+    ['dragleave', 'drop'].forEach(eventName => {
+        $('uploadZone').addEventListener(eventName, event => {
+            event.preventDefault();
 
-    ['dragleave', 'drop']
-        .forEach(eventName => {
-
-            $('uploadZone')
-                .addEventListener(
-                    eventName,
-                    event => {
-
-                        event.preventDefault();
-
-                        $('uploadZone')
-                            .classList.remove(
-                                'drag-over'
-                            );
-                    }
-                );
+            $('uploadZone').classList.remove('drag-over');
         });
+    });
 
-
-    $('uploadZone')
-        .addEventListener(
-            'drop',
-            event => {
-
-                if (
-                    event.dataTransfer &&
-                    event.dataTransfer.files[0]
-                ) {
-
-                    handleFile(
-                        event.dataTransfer.files[0]
-                    );
-                }
-            }
-        );
+    $('uploadZone').addEventListener('drop', event => {
+        if (
+            event.dataTransfer &&
+            event.dataTransfer.files[0]
+        ) {
+            handleFile(event.dataTransfer.files[0]);
+        }
+    });
 
 
     /* ---------------------------------------------------------
        ATTACH BUTTON
        --------------------------------------------------------- */
 
-    $('btnAttach').onclick =
-        () => {
-
-            if (state.awaitingEvidence) {
-
-                fileInput.click();
-
-            } else {
-
-                toast(
-                    'Tell Vera your grievance and provide the Order ID first.',
-                    'info'
-                );
-            }
-        };
+    $('btnAttach').onclick = () => {
+        if (state.awaitingEvidence) {
+            fileInput.click();
+        } else {
+            toast(
+                'Tell Vera your grievance and provide the Order ID first.',
+                'info'
+            );
+        }
+    };
 
 
     /* ---------------------------------------------------------
        DEMO ORDERS
        --------------------------------------------------------- */
 
-    document
-        .querySelectorAll('.demo')
-        .forEach(button => {
+    document.querySelectorAll('.demo').forEach(button => {
+        button.onclick = () => {
+            send('I want to return because the product is damaged');
 
-            button.onclick = () => {
-
+            setTimeout(() => {
                 send(
-                    'I want to return because the product is damaged'
+                    'My Order ID is ' + button.dataset.order
                 );
-
-                setTimeout(
-                    () => {
-
-                        send(
-                            'My Order ID is ' +
-                            button.dataset.order
-                        );
-
-                    },
-                    700
-                );
-            };
-        });
+            }, 700);
+        };
+    });
 
 
     /* ---------------------------------------------------------
        RESULT CLOSE
        --------------------------------------------------------- */
 
-    $('resultCardWrapper')
-        .onclick = event => {
-
-            if (
-                event.target.id ===
-                    'resultCardWrapper' ||
-
-                event.target.id ===
-                    'resultClose'
-            ) {
-
-                $('resultCardWrapper')
-                    .classList.remove(
-                        'active'
-                    );
-            }
-        };
+    $('resultCardWrapper').onclick = event => {
+        if (
+            event.target.id === 'resultCardWrapper' ||
+            event.target.id === 'resultClose'
+        ) {
+            $('resultCardWrapper').classList.remove('active');
+        }
+    };
 }
 
 
-document.addEventListener(
-    'DOMContentLoaded',
-    setup
-);
+document.addEventListener('DOMContentLoaded', setup);

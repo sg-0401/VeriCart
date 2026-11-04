@@ -50,6 +50,7 @@ def _percentage(value):
         return "Not available"
 
 
+
 def _decision_text(final_decision):
     """Human-readable explanation of the final decision."""
 
@@ -77,6 +78,14 @@ def _decision_text(final_decision):
             "The automated checks produced mixed or uncertain "
             "results. A human specialist should review the "
             "case before the final return decision is made."
+        ),
+
+        "additional_evidence_required": (
+            "The uploaded image reached or exceeded the "
+            "60% AI-generated media probability threshold. "
+            "An unboxing video is required for further "
+            "verification. This is not a rejection of the "
+            "customer's return request."
         ),
     }
 
@@ -110,6 +119,13 @@ def _next_action(final_decision):
             "Send the case to a verification specialist for "
             "manual review."
         ),
+
+        "additional_evidence_required": (
+            "Request an unboxing video from the customer. "
+            "Continue verification after receiving the "
+            "additional evidence. Do not reject the return "
+            "solely because of the AI-media detection result."
+        ),
     }
 
     return mapping.get(
@@ -129,6 +145,8 @@ def _result_label(final_decision, decision_label):
         "not_verified": "ISSUE NOT VERIFIED",
         "reupload_required": "CLEARER EVIDENCE REQUIRED",
         "human_review": "HUMAN VERIFICATION REQUIRED",
+        "additional_evidence_required":
+            "UNBOXING VIDEO REQUIRED",
     }
 
     return mapping.get(
@@ -139,8 +157,9 @@ def _result_label(final_decision, decision_label):
 
 def _plain_ai_result(ai_media):
     """
-    Convert the AI-media detector output into
-    simple language.
+    Convert AI-media detector output into simple language.
+    The 60% threshold requests additional evidence,
+    not automatic rejection.
     """
 
     if not ai_media:
@@ -156,7 +175,7 @@ def _plain_ai_result(ai_media):
         ai_media.get("label", "")
     ).lower()
 
-    if status == "unavailable":
+    if status == "unavailable" or "error" in ai_media:
         return (
             "The AI-generated media check could not be "
             "completed. This did not prevent the other "
@@ -169,39 +188,48 @@ def _plain_ai_result(ai_media):
     )
 
     try:
-        probability_text = (
-            f"{float(ai_probability) * 100:.1f}%"
-        )
-    except Exception:
+        probability = float(ai_probability)
+        probability_text = f"{probability * 100:.1f}%"
+    except (TypeError, ValueError):
+        probability = 0
         probability_text = "not available"
 
-    if (
-        "ai" in label
-        or "generated" in label
-    ):
+    threshold = 0.60
+
+    if probability >= threshold:
         return (
-            f"The media showed characteristics associated "
-            f"with AI-generated content. Estimated AI-media "
-            f"probability: {probability_text}."
+            "The media showed characteristics associated "
+            "with AI-generated content. Estimated AI-media "
+            f"probability: {probability_text}. This meets "
+            "or exceeds the 60% threshold. An unboxing video "
+            "is requested for further verification. "
+            "This result does not automatically reject "
+            "the customer's return."
         )
 
     if (
         "real" in label
         or "authentic" in label
+        or status == "likely_real"
     ):
         return (
-            f"The media showed characteristics consistent "
-            f"with real photographic/video content. "
+            "The media showed characteristics consistent "
+            "with real photographic/video content. "
             f"Estimated AI-media probability: "
-            f"{probability_text}."
+            f"{probability_text}. The result is below "
+            "the 60% threshold, so normal verification "
+            "can continue."
         )
 
     return (
-        f"The AI-media detector returned an "
-        f"AI-media probability of {probability_text}. "
-        f"This result is treated as supporting evidence "
-        f"rather than the sole basis for the return decision."
+        f"The AI-media detector returned an AI-media "
+        f"probability of {probability_text}. This is below "
+        "the 60% threshold, so normal verification can "
+        "continue. AI detection is treated as supporting "
+        "evidence rather than the sole basis for a "
+        "return decision."
     )
+
 
 
 # ============================================================
